@@ -11,6 +11,7 @@ tautan sosial placeholder.
 ```
 reva-group-website/
 ├── index.html                # Halaman utama (hero, reservasi, konsultasi, informasi)
+├── reservasi.html            # Reservasi online: jadwal real-time + pesan via WhatsApp
 ├── tentang-kami.html         # Profil bisnis (diminta reviewer payment gateway)
 ├── syarat-ketentuan.html     # Syarat & ketentuan layanan
 ├── pengembalian-dana.html    # Kebijakan refund
@@ -69,6 +70,21 @@ Masih butuh data dari Reva Group (isi lalu update situs):
       review DOKU memeriksa kesesuaian domain dengan data merchant.
 - [ ] **Klaim "support 24 jam"**: pastikan memang sanggup; bila tidak, ubah ke jam operasional
       riil (ada di index, faq, kontak).
+
+## Jadwal Ketersediaan (AnsarPro API)
+
+Halaman `reservasi.html` menampilkan jadwal ketersediaan Rawdah secara berkala:
+
+1. GitHub Actions ([.github/workflows/availability.yml](.github/workflows/availability.yml))
+   memanggil `GET /appointments/availability` AnsarPro API tiap ±10 menit.
+2. API key tersimpan **hanya** di repo secret `ANSARPRO_API_KEY` — jangan pernah menaruh key
+   `ansar_live_…` di file situs; situs ini publik dan key tersebut bisa dipakai belanja.
+3. Hasilnya diterbitkan sebagai `availability.json` di branch `data` (satu commit, force push).
+4. `js/reservasi.js` membaca file itu via raw.githubusercontent.com dan merender kalender.
+   Pemesanan final tetap via WhatsApp — endpoint purchase API sengaja tidak dipakai dari situs.
+
+Ganti key: `gh secret set ANSARPRO_API_KEY` lalu jalankan ulang workflow
+(`gh workflow run availability.yml`).
 
 ## Menjalankan & Deploy
 
