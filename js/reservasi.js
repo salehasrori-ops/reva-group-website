@@ -65,9 +65,14 @@
   const keyOf = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
   const rupiah = (n) => "Rp " + n.toLocaleString("id-ID");
 
-  function todayKey() {
-    const t = new Date();
-    return keyOf(t.getFullYear(), t.getMonth(), t.getDate());
+  // Jadwal memakai Waktu Arab Saudi (UTC+3) — "hari ini" dan "jam lewat"
+  // dihitung terhadap jam Saudi, bukan jam perangkat pengunjung.
+  function saudiNow() {
+    const d = new Date(Date.now() + 3 * 3600 * 1000);
+    return {
+      dateKey: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
+      hhmm: pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()),
+    };
   }
 
   function tanggalLabel() {
@@ -81,18 +86,30 @@
     return state.gender === "female" ? "Wanita" : "Pria";
   }
 
-  function slotsFor(dateKey, gender) {
+  function allSlotsFor(dateKey, gender) {
     const day = state.data && state.data.days && state.data.days[dateKey];
-    const list = (day && day[gender]) || [];
-    return list.filter((s) => s[2] === 1);
+    return ((day && day[gender]) || []).slice().sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
+  // "open"    → bisa dipilih
+  // "past"    → jamnya sudah lewat (WAS)
+  // "soldout" → kuota habis / ditutup
+  function slotStatus(dateKey, slot) {
+    const now = saudiNow();
+    if (dateKey < now.dateKey) return "past";
+    if (dateKey === now.dateKey && slot[0] <= now.hhmm) return "past";
+    if (slot[2] !== 1) return "soldout";
+    return "open";
+  }
+
+  function openSlotsFor(dateKey, gender) {
+    return allSlotsFor(dateKey, gender).filter((s) => slotStatus(dateKey, s) === "open");
   }
 
   function monthHasSlot({ y, m }) {
     const dim = new Date(y, m + 1, 0).getDate();
-    const today = todayKey();
     for (let d = 1; d <= dim; d++) {
-      const k = keyOf(y, m, d);
-      if (k >= today && slotsFor(k, state.gender).length) return true;
+      if (openSlotsFor(keyOf(y, m, d), state.gender).length) return true;
     }
     return false;
   }
@@ -134,15 +151,15 @@
   function renderDates() {
     const { y, m } = state.months[state.monthIdx];
     const dim = new Date(y, m + 1, 0).getDate();
-    const today = todayKey();
     el.dateStrip.innerHTML = "";
     for (let d = 1; d <= dim; d++) {
       const k = keyOf(y, m, d);
-      const av = k >= today ? slotsFor(k, state.gender) : [];
+      const open = openSlotsFor(k, state.gender);
       const b = document.createElement("button");
       b.type = "button";
-      b.className = (av.length ? "has-slot" : "") + (state.date === k ? " selected" : "");
-      b.disabled = k < today;
+      // Tanggal lewat, habis, atau tanpa jadwal → abu-abu dan tidak bisa dipilih
+      b.disabled = open.length === 0;
+      b.className = (open.length ? "has-slot" : "") + (state.date === k ? " selected" : "");
       b.innerHTML = `<span class="d-num">${d}</span><span class="d-day">${HARI[new Date(y, m, d).getDay()]}</span><span class="d-dot"></span>`;
       b.addEventListener("click", () => {
         state.date = k;
@@ -157,24 +174,31 @@
 
   function renderTimes() {
     el.timeList.innerHTML = "";
-    const av = state.date ? slotsFor(state.date, state.gender) : [];
-    if (!av.length) {
+    const all = state.date ? allSlotsFor(state.date, state.gender) : [];
+    if (!all.length) {
       el.timeList.innerHTML = `<div class="time-empty">${state.date ? "Tidak ada jadwal sesi ini pada tanggal tersebut — pilih tanggal lain." : "Pilih tanggal terlebih dahulu."}</div>`;
       return;
     }
-    av.sort((a, b2) => a[0].localeCompare(b2[0]));
-    for (const [time, count] of av) {
+    for (const s of all) {
+      const [time, count] = s;
+      const st = slotStatus(state.date, s);
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "time-row" + (state.time === time ? " selected" : "");
-      b.innerHTML = `<span class="t-time">${time} WAS</span><span class="t-left">${count > 0 ? "Sisa " + count + " jamaah" : "Tersedia"}</span>`;
-      b.addEventListener("click", () => {
-        state.time = time;
-        state.timeLeft = count;
-        const cap = count > 0 ? count : MAX_PAX_FALLBACK;
-        if (state.pax > cap) state.pax = cap;
-        renderAll();
-      });
+      if (st === "open") {
+        b.className = "time-row" + (state.time === time ? " selected" : "");
+        b.innerHTML = `<span class="t-time">${time} WAS</span><span class="t-left">${count > 0 ? "Sisa " + count + " jamaah" : "Tersedia"}</span>`;
+        b.addEventListener("click", () => {
+          state.time = time;
+          state.timeLeft = count;
+          const cap = count > 0 ? count : MAX_PAX_FALLBACK;
+          if (state.pax > cap) state.pax = cap;
+          renderAll();
+        });
+      } else {
+        b.className = "time-row sold-out";
+        b.disabled = true;
+        b.innerHTML = `<span class="t-time">${time} WAS</span><span class="t-left">${st === "past" ? "Waktu lewat" : "Habis"}</span>`;
+      }
       el.timeList.appendChild(b);
     }
   }
@@ -205,12 +229,11 @@
   function pickFirstAvailableDate() {
     const { y, m } = state.months[state.monthIdx];
     const dim = new Date(y, m + 1, 0).getDate();
-    const today = todayKey();
     state.date = null;
     state.time = null;
     for (let d = 1; d <= dim; d++) {
       const k = keyOf(y, m, d);
-      if (k >= today && slotsFor(k, state.gender).length) { state.date = k; return; }
+      if (openSlotsFor(k, state.gender).length) { state.date = k; return; }
     }
   }
 

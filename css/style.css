@@ -732,6 +732,15 @@ section[id] { scroll-margin-top: 5rem; }
 .time-row .t-left { font-size: 0.7rem; font-weight: 600; color: #047857; }
 .time-row.selected { border-color: var(--charcoal); background: var(--charcoal); }
 .time-row.selected .t-time, .time-row.selected .t-left { color: #fff; }
+.time-row.sold-out {
+  background: #F9FAFB;
+  border-color: var(--line);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.time-row.sold-out:hover { border-color: var(--line); }
+.time-row.sold-out .t-time { color: #9CA3AF; text-decoration: line-through; }
+.time-row.sold-out .t-left { color: #9CA3AF; }
 .time-empty { padding: 1rem; text-align: center; font-size: 0.8rem; color: #9CA3AF; }
 
 .pax-row { display: flex; align-items: center; justify-content: space-between; border-radius: 0.75rem; border: 1px solid var(--line); padding: 0.75rem 1rem; }
@@ -885,6 +894,11 @@ section[id] { scroll-margin-top: 5rem; }
   background: var(--cream);
   padding: 1.125rem;
   text-align: center;
+}
+.bank-box .bank-logo {
+  height: 1.75rem;
+  width: auto;
+  margin: 0 auto 0.625rem;
 }
 .bank-box .bank-name {
   font-size: 0.7rem;
