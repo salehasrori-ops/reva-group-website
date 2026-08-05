@@ -48,7 +48,7 @@ Semua warna didefinisikan sebagai CSS variable di bagian atas `css/style.css`:
 Sudah terpenuhi di situs:
 
 - [x] Deskripsi produk/jasa jelas (jasa reservasi Rawdah) + profil bisnis (Tentang Kami)
-- [x] Harga tercantum jelas dalam IDR (Rp 109.000/pax)
+- [x] Harga tercantum jelas dalam IDR (Rp 165.000/pax)
 - [x] Alur pemesanan & pembayaran dijelaskan (FAQ "Bagaimana alur pemesanan dan pembayarannya?")
 - [x] Syarat & Ketentuan
 - [x] Kebijakan Pengembalian Dana (kondisi refund + jangka waktu 3–7 hari kerja)
@@ -60,8 +60,7 @@ Sudah terpenuhi di situs:
 
 Masih butuh data dari Reva Group (isi lalu update situs):
 
-- [ ] **Harga**: konfirmasi `Rp 109.000/pax` sesuai tarif resmi — bila beda, cari-ganti di
-      `index.html`, `syarat-ketentuan.html`, `faq.html`.
+- [x] **Harga**: Rp 165.000/pax — sudah dikonfirmasi pemilik (2026-08-05).
 - [ ] **Alamat usaha**: DOKU umumnya meminta alamat kantor tercantum di situs. Tambahkan di
       footer (kolom "Info Reva Group") dan halaman Kontak.
 - [ ] **Nama badan usaha**: bila pengajuan atas nama PT/CV, cantumkan nama legalnya di footer
