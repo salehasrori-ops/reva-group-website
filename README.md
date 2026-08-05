@@ -1,0 +1,86 @@
+# Reva Group — Website Jasa Reservasi Rawdah
+
+Website statis untuk Reva Group, mengikuti struktur dan tata letak albalad.co.id dengan palet
+warna yang diambil dari logo Reva Group (hitam arang + gradasi bronze/copper). Konten disiapkan
+agar aman untuk pengajuan merchant payment gateway (DOKU): harga jelas, S&K, kebijakan refund,
+kebijakan privasi, dan kontak resmi tersedia; tanpa klaim area layanan lintas negara dan tanpa
+tautan sosial placeholder.
+
+## Struktur File
+
+```
+reva-group-website/
+├── index.html                # Halaman utama (hero, reservasi, konsultasi, informasi)
+├── tentang-kami.html         # Profil bisnis (diminta reviewer payment gateway)
+├── syarat-ketentuan.html     # Syarat & ketentuan layanan
+├── pengembalian-dana.html    # Kebijakan refund
+├── kebijakan-privasi.html    # Kebijakan privasi
+├── kebijakan-pengiriman.html # Cara penyerahan layanan (digital, tanpa barang fisik)
+├── faq.html                  # Pertanyaan yang sering diajukan (termasuk alur bayar)
+├── kontak.html               # Halaman kontak
+├── css/style.css             # Seluruh styling (palet warna di bagian atas file)
+├── js/main.js                # Toggle menu seluler
+└── assets/
+    ├── reva-logo.png         # Logo Reva Group (dari revagroup.co.id)
+    └── hero.jpg              # Foto Masjid Nabawi (atribusi tampil di footer index)
+```
+
+## Kontak Terpasang
+
+- WhatsApp: 0877 0877 0871 (tautan `wa.me/6287708770871`)
+- Email: revagroupoffice@gmail.com
+
+## Mengubah Warna
+
+Semua warna didefinisikan sebagai CSS variable di bagian atas `css/style.css`:
+
+| Variabel         | Nilai     | Asal                              |
+| ---------------- | --------- | --------------------------------- |
+| `--charcoal`     | `#1D1E20` | Hitam arang logo                  |
+| `--bronze`       | `#A97747` | Bronze tengah logo (aksen utama)  |
+| `--bronze-dark`  | `#875A32` | Bronze gelap logo                 |
+| `--bronze-light` | `#C89B6A` | Bronze terang logo (aksen gelap)  |
+| `--bronze-deep`  | `#6E4A26` | Turunan gelap untuk section info  |
+| `--cream`        | `#F8F4EE` | Netral hangat untuk kartu         |
+
+## Status Checklist DOKU
+
+Sudah terpenuhi di situs:
+
+- [x] Deskripsi produk/jasa jelas (jasa reservasi Rawdah) + profil bisnis (Tentang Kami)
+- [x] Harga tercantum jelas dalam IDR (Rp 109.000/pax)
+- [x] Alur pemesanan & pembayaran dijelaskan (FAQ "Bagaimana alur pemesanan dan pembayarannya?")
+- [x] Syarat & Ketentuan
+- [x] Kebijakan Pengembalian Dana (kondisi refund + jangka waktu 3–7 hari kerja)
+- [x] Kebijakan Privasi (data pembayaran diproses penyedia pembayaran, tidak disimpan)
+- [x] Kebijakan Pengiriman (jasa digital — bukti reservasi/QR via WhatsApp & email)
+- [x] Kontak resmi: email + WhatsApp di setiap halaman
+- [x] Tanpa klaim lintas negara, tanpa tautan sosial placeholder/mati
+- [x] Lisensi aset beres: foto CC BY-SA 4.0 dengan atribusi tampil di footer
+
+Masih butuh data dari Reva Group (isi lalu update situs):
+
+- [ ] **Harga**: konfirmasi `Rp 109.000/pax` sesuai tarif resmi — bila beda, cari-ganti di
+      `index.html`, `syarat-ketentuan.html`, `faq.html`.
+- [ ] **Alamat usaha**: DOKU umumnya meminta alamat kantor tercantum di situs. Tambahkan di
+      footer (kolom "Info Reva Group") dan halaman Kontak.
+- [ ] **Nama badan usaha**: bila pengajuan atas nama PT/CV, cantumkan nama legalnya di footer
+      (mis. "PT ... — Reva Group") agar cocok dengan dokumen merchant.
+- [ ] **Domain**: deploy ke domain resmi (mis. revagroup.co.id / subdomain) dengan HTTPS —
+      review DOKU memeriksa kesesuaian domain dengan data merchant.
+- [ ] **Klaim "support 24 jam"**: pastikan memang sanggup; bila tidak, ubah ke jam operasional
+      riil (ada di index, faq, kontak).
+
+## Menjalankan & Deploy
+
+Situs sepenuhnya statis — buka `index.html` langsung di browser, atau unggah seluruh folder ke
+Netlify / Vercel / Cloudflare Pages / hosting cPanel apa pun. Tidak ada build step.
+
+## Atribusi
+
+- Foto hero: ["Masjid Nabwi 14"](https://commons.wikimedia.org/wiki/File:Masjid_Nabwi_14.jpg)
+  oleh Tahir mq, lisensi [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/),
+  via Wikimedia Commons. Atribusi ini wajib dipertahankan bila foto tetap digunakan.
+- Logo: milik Reva Group (revagroup.co.id).
+- Font: [Poppins](https://fonts.google.com/specimen/Poppins) via Google Fonts (butuh koneksi
+  internet; ada fallback ke font sistem).
