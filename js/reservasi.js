@@ -7,6 +7,7 @@
   const DATA_URL = "https://raw.githubusercontent.com/salehasrori-ops/reva-group-website/data/availability.json";
   const PRICE = 165000;
   const WA_NUMBER = "6287708770871";
+  const BANK = { name: "BCA", no: "4744188999", holder: "PT. REVA SARIF GROUP" };
   const MAX_PAX_FALLBACK = 10; // batas pax saat slot tidak melaporkan sisa kuota
 
   const HARI = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -36,6 +37,17 @@
     btnBook: $("#btnBook"),
     errBox: $("#bookingError"),
     widget: $("#bookingWidget"),
+    // modal pembayaran
+    payModal: $("#payModal"),
+    payClose: $("#payClose"),
+    payBack: $("#payBack"),
+    btnPaid: $("#btnPaid"),
+    btnCopy: $("#btnCopy"),
+    pmSesi: $("#pmSesi"),
+    pmTanggal: $("#pmTanggal"),
+    pmJam: $("#pmJam"),
+    pmPax: $("#pmPax"),
+    pmTotal: $("#pmTotal"),
   };
 
   const state = {
@@ -56,6 +68,17 @@
   function todayKey() {
     const t = new Date();
     return keyOf(t.getFullYear(), t.getMonth(), t.getDate());
+  }
+
+  function tanggalLabel() {
+    if (!state.date) return "—";
+    const [yy, mm, dd] = state.date.split("-").map(Number);
+    const dt = new Date(yy, mm - 1, dd);
+    return `${HARI_FULL[dt.getDay()]}, ${dd} ${BULAN[mm - 1]} ${yy}`;
+  }
+
+  function genderLabel() {
+    return state.gender === "female" ? "Wanita" : "Pria";
   }
 
   function slotsFor(dateKey, gender) {
@@ -79,7 +102,7 @@
     el.btnFemale.className = state.gender === "female" ? "active-female" : "";
     el.btnMale.className = state.gender === "male" ? "active-male" : "";
     el.panel.className = "slot-panel " + state.gender;
-    el.panelTitle.textContent = state.gender === "female" ? "Sesi Wanita" : "Sesi Pria";
+    el.panelTitle.textContent = "Sesi " + genderLabel();
   }
 
   function renderMonths() {
@@ -162,15 +185,8 @@
     el.paxMinus.disabled = state.pax <= 1;
     el.paxPlus.disabled = state.pax >= cap;
 
-    const genderLabel = state.gender === "female" ? "Wanita" : "Pria";
-    el.sumSesi.textContent = genderLabel;
-    if (state.date) {
-      const [yy, mm, dd] = state.date.split("-").map(Number);
-      const dt = new Date(yy, mm - 1, dd);
-      el.sumTanggal.textContent = `${HARI_FULL[dt.getDay()]}, ${dd} ${BULAN[mm - 1]} ${yy}`;
-    } else {
-      el.sumTanggal.textContent = "—";
-    }
+    el.sumSesi.textContent = genderLabel();
+    el.sumTanggal.textContent = tanggalLabel();
     el.sumJam.textContent = state.time ? state.time + " WAS" : "—";
     el.sumPax.textContent = state.pax + " jamaah";
     el.sumTotal.textContent = rupiah(PRICE * state.pax);
@@ -198,24 +214,58 @@
     }
   }
 
-  // ---------- aksi ----------
-  function buildWaLink() {
-    const genderLabel = state.gender === "female" ? "Wanita" : "Pria";
-    const [yy, mm, dd] = state.date.split("-").map(Number);
-    const dt = new Date(yy, mm - 1, dd);
-    const tanggal = `${HARI_FULL[dt.getDay()]}, ${dd} ${BULAN[mm - 1]} ${yy}`;
+  // ---------- modal pembayaran ----------
+  function openPayModal() {
+    if (!(state.date && state.time)) return;
+    el.pmSesi.textContent = genderLabel();
+    el.pmTanggal.textContent = tanggalLabel();
+    el.pmJam.textContent = state.time + " WAS";
+    el.pmPax.textContent = state.pax + " jamaah";
+    el.pmTotal.textContent = rupiah(PRICE * state.pax);
+    el.payModal.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closePayModal() {
+    el.payModal.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  function buildPaidWaLink() {
     const msg =
-      `Assalamu'alaikum, saya ingin memesan jasa reservasi Rawdah:\n` +
-      `• Sesi: ${genderLabel}\n` +
-      `• Tanggal: ${tanggal}\n` +
+      `Assalamu'alaikum, saya sudah melakukan pembayaran untuk reservasi Rawdah:\n` +
+      `• Sesi: ${genderLabel()}\n` +
+      `• Tanggal: ${tanggalLabel()}\n` +
       `• Jam: ${state.time} WAS\n` +
       `• Jumlah jamaah: ${state.pax}\n` +
       `• Total: ${rupiah(PRICE * state.pax)} (${state.pax} × ${rupiah(PRICE)})\n` +
-      `Mohon diproses, terima kasih.`;
+      `Transfer ke ${BANK.name} ${BANK.no} a.n. ${BANK.holder}.\n` +
+      `Berikut saya lampirkan bukti transfernya.`;
     return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
   }
 
-  async function load(fresh) {
+  async function copyRekening() {
+    const feedback = () => {
+      const prev = el.btnCopy.textContent;
+      el.btnCopy.textContent = "Tersalin ✓";
+      setTimeout(() => { el.btnCopy.textContent = prev; }, 2000);
+    };
+    try {
+      await navigator.clipboard.writeText(BANK.no);
+      feedback();
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = BANK.no;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      feedback();
+    }
+  }
+
+  // ---------- data ----------
+  async function load() {
     try {
       el.btnRefresh.disabled = true;
       const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
@@ -243,12 +293,20 @@
   // ---------- event ----------
   el.btnFemale.addEventListener("click", () => { state.gender = "female"; state.monthIdx = 0; pickFirstAvailableDate(); renderAll(); });
   el.btnMale.addEventListener("click", () => { state.gender = "male"; state.monthIdx = 0; pickFirstAvailableDate(); renderAll(); });
-  el.btnRefresh.addEventListener("click", () => load(true));
+  el.btnRefresh.addEventListener("click", load);
   el.paxMinus.addEventListener("click", () => { if (state.pax > 1) { state.pax--; renderPaxSummary(); } });
   el.paxPlus.addEventListener("click", () => { state.pax++; renderPaxSummary(); });
-  el.btnBook.addEventListener("click", () => {
-    if (state.date && state.time) window.open(buildWaLink(), "_blank", "noopener");
+
+  el.btnBook.addEventListener("click", openPayModal);
+  el.payClose.addEventListener("click", closePayModal);
+  el.payBack.addEventListener("click", closePayModal);
+  el.payModal.addEventListener("click", (e) => { if (e.target === el.payModal) closePayModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.payModal.hidden) closePayModal(); });
+  el.btnCopy.addEventListener("click", copyRekening);
+  el.btnPaid.addEventListener("click", () => {
+    window.open(buildPaidWaLink(), "_blank", "noopener");
+    closePayModal();
   });
 
-  load(false);
+  load();
 })();
