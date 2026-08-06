@@ -1,8 +1,11 @@
-// Panel Admin — pesanan, trafik, pengaturan marketing, pengguna & akses.
-// Bergantung pada window.RVA dari js/site.js.
+// Panel Admin — seluruh antarmuka dibangun di sini, hanya SETELAH server
+// memverifikasi bahwa pengguna benar-benar owner/admin. Non-staf tidak pernah
+// melihat menu apa pun: langsung dialihkan ke halaman masuk / akun.
+// Data tetap dijaga di sisi server (401/403), ini lapisan tampilannya.
 
 (() => {
   const $ = (s) => document.querySelector(s);
+  const root = $("#adminRoot");
   const STATUS_LABEL = {
     menunggu_verifikasi: "Menunggu Verifikasi",
     terkonfirmasi: "Terkonfirmasi",
@@ -21,53 +24,191 @@
     if (!me) return false;
     if (me.role === "owner") return true;
     if (me.role !== "admin") return false;
-    if (perm === "orders") return true;
+    if (perm === "orders") return true; // admin selalu boleh kelola pesanan
     return (me.perms || "").split(",").includes(perm);
   }
 
-  // ---------- gate ----------
+  // ---------- gerbang akses ----------
   async function init() {
-    if (!RVA.token()) return deny();
+    if (!RVA.token()) return location.replace("masuk.html?next=admin.html");
+    let user;
     try {
       const res = await RVA.authFetch("/me");
-      if (!res.ok) return deny();
-      const data = await res.json();
-      me = data.user;
-      if (me.role !== "owner" && me.role !== "admin") return deny();
-      $("#adminHello").textContent =
-        (me.role === "owner" ? "Owner" : "Admin") + ": " + me.name +
-        (me.role === "admin" ? " — akses: pesanan" + (me.perms ? ", " + me.perms.split(",").join(", ") : "") : "");
-      $("#adminLayout").hidden = false;
-      for (const b of document.querySelectorAll("#adminNav button")) {
-        const p = b.dataset.panel;
-        b.hidden = !can(p);
+      if (!res.ok) {
+        RVA.clearAuth();
+        return location.replace("masuk.html?next=admin.html");
       }
-      loadOrders();
-      if (can("traffic")) loadStats();
-      if (can("settings")) loadSettings();
-      if (can("users")) loadUsers("");
+      user = (await res.json()).user;
     } catch {
-      deny();
+      root.innerHTML = '<div class="auth-wrap"><div class="form-alert error" style="text-align:center;">Tidak dapat terhubung ke server. Coba muat ulang halaman.</div></div>';
+      return;
     }
+    // bukan staf → keluar tanpa pernah merender apa pun
+    if (user.role !== "owner" && user.role !== "admin") {
+      RVA.setUser(user);
+      return location.replace("akun.html");
+    }
+    me = user;
+    RVA.setUser(user);
+    buildUI();
   }
 
-  function deny() {
-    $("#adminHello").textContent = "Akses ditolak.";
-    $("#deniedBox").hidden = false;
+  // ---------- bangun antarmuka ----------
+  function buildUI() {
+    const panels = [
+      { key: "orders", label: "📋 Pesanan" },
+      { key: "traffic", label: "📈 Trafik" },
+      { key: "settings", label: "⚙️ Pengaturan" },
+      { key: "users", label: "👥 Pengguna" },
+    ].filter((p) => can(p.key));
+
+    const hello =
+      (me.role === "owner" ? "Owner" : "Admin") + ": " + esc(me.name) +
+      (me.role === "admin" ? " — akses: pesanan" + (me.perms ? ", " + esc(me.perms.split(",").join(", ")) : "") : "");
+
+    root.innerHTML = `
+      <section class="page-hero" style="padding: 2rem 0;">
+        <svg class="pattern" aria-hidden="true">
+          <defs>
+            <pattern id="geo-page" width="56" height="56" patternUnits="userSpaceOnUse">
+              <polygon points="32,22 34.5,29.5 42,32 34.5,34.5 32,42 29.5,34.5 22,32 29.5,29.5" fill="currentColor" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#geo-page)" />
+        </svg>
+        <div class="container">
+          <h1 style="font-size: clamp(1.375rem, 3vw, 1.75rem);">Panel <span style="color: var(--bronze-light);">Admin</span></h1>
+          <p style="margin-top: 0.25rem;">${hello}</p>
+        </div>
+      </section>
+
+      <div class="admin-layout">
+        <nav class="admin-nav" id="adminNav">
+          ${panels.map((p, i) => `<button type="button" data-panel="${p.key}" class="${i === 0 ? "active" : ""}">${p.label}</button>`).join("")}
+        </nav>
+        <div class="admin-panel" id="adminPanels">
+          ${panels.map((p, i) => panelMarkup(p.key, i === 0)).join("")}
+        </div>
+      </div>`;
+
+    wireNav();
+    if (can("orders")) { wireOrders(); loadOrders(); }
+    if (can("traffic")) loadStats();
+    if (can("settings")) { wireSettings(); loadSettings(); }
+    if (can("users")) { wireUsers(); loadUsers(""); }
   }
 
-  // ---------- navigasi panel ----------
-  document.querySelectorAll("#adminNav button").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll("#adminNav button").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      for (const p of ["orders", "traffic", "settings", "users"]) {
-        $("#panel-" + p).hidden = p !== b.dataset.panel;
-      }
+  function panelMarkup(key, first) {
+    const hide = first ? "" : " hidden";
+    if (key === "orders") {
+      return `<section id="panel-orders"${hide}>
+        <h2>Pesanan</h2>
+        <div class="filter-row" style="margin: 1rem 0;">
+          <select id="orderFilter">
+            <option value="">Semua status</option>
+            ${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}
+          </select>
+          <button type="button" class="btn-line" id="btnReloadOrders">Muat Ulang</button>
+          <span class="order-meta" id="orderCount"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Kode</th><th>Pemesan</th><th>Jadwal</th><th>Pax</th><th>Total</th><th>Status</th><th>Catatan</th></tr></thead>
+            <tbody id="orderRows"><tr><td colspan="7">Memuat&hellip;</td></tr></tbody>
+          </table>
+        </div>
+        <div class="filter-row" style="margin-top: 0.75rem;">
+          <button type="button" class="btn-line" id="btnPrevPage">&larr; Sebelumnya</button>
+          <span class="order-meta" id="pageInfo"></span>
+          <button type="button" class="btn-line" id="btnNextPage">Berikutnya &rarr;</button>
+        </div>
+      </section>`;
+    }
+    if (key === "traffic") {
+      return `<section id="panel-traffic"${hide}>
+        <h2>Trafik &amp; Konversi (14 hari)</h2>
+        <div class="stat-tiles" style="margin: 1rem 0;">
+          <div class="stat-tile"><div class="n" id="stViews">—</div><div class="l">Tampilan halaman</div></div>
+          <div class="stat-tile"><div class="n" id="stVisitors">—</div><div class="l">Pengunjung unik</div></div>
+          <div class="stat-tile"><div class="n" id="stWaClicks">—</div><div class="l">Klik WhatsApp</div></div>
+          <div class="stat-tile"><div class="n" id="stOrders">—</div><div class="l">Pesanan dibuat</div></div>
+        </div>
+        <div class="bar-chart" id="chartDaily"></div>
+        <div class="profile-grid" style="padding: 1.25rem 0 0; grid-template-columns: 1fr; gap: 1rem;">
+          <div class="profile-card"><h2>Halaman Terpopuler</h2><div id="topPages" class="order-meta">—</div></div>
+          <div class="profile-card"><h2>Sumber Kunjungan (Referrer)</h2><div id="topRefs" class="order-meta">—</div></div>
+          <div class="profile-card">
+            <h2>Perangkat &amp; Ringkasan Pesanan</h2>
+            <div id="deviceStats" class="order-meta">—</div>
+            <div id="orderRecap" class="order-meta" style="margin-top: 0.75rem;">—</div>
+          </div>
+        </div>
+      </section>`;
+    }
+    if (key === "settings") {
+      return `<section id="panel-settings"${hide}>
+        <h2>Pengaturan Marketing</h2>
+        <p class="settings-note" style="margin: 1rem 0;">
+          Tempel ID dari masing-masing platform lalu <strong>Simpan</strong> — pixel langsung aktif
+          di seluruh halaman situs tanpa perlu edit kode. Kosongkan untuk menonaktifkan.
+          <br />&bull; <strong>GA4</strong>: Google Analytics &rarr; Admin &rarr; Data Streams &rarr; Measurement ID (<code>G-XXXXXXXXXX</code>)
+          <br />&bull; <strong>Meta Pixel</strong>: Meta Business Suite &rarr; Events Manager &rarr; Pixel ID
+          <br />&bull; <strong>TikTok Pixel</strong>: TikTok Ads Manager &rarr; Assets &rarr; Events &rarr; Pixel ID
+          <br />&bull; <strong>Google Client ID</strong>: Google Cloud Console &rarr; Credentials &rarr; OAuth 2.0 Client ID (tombol Login Google)
+        </p>
+        <form class="profile-card" style="display: grid; gap: 0.875rem; max-width: 34rem;" id="formSettings">
+          <div class="form-alert" id="settingsAlert" hidden></div>
+          <div class="field"><label for="setGa4">Google Tag / GA4 Measurement ID</label><input id="setGa4" type="text" placeholder="G-XXXXXXXXXX" /></div>
+          <div class="field"><label for="setMeta">Meta Pixel ID</label><input id="setMeta" type="text" placeholder="123456789012345" /></div>
+          <div class="field"><label for="setTiktok">TikTok Pixel ID</label><input id="setTiktok" type="text" placeholder="XXXXXXXXXXXXXXXXXX" /></div>
+          <div class="field"><label for="setGoogleClient">Google OAuth Client ID (Login Google)</label><input id="setGoogleClient" type="text" placeholder="xxxx.apps.googleusercontent.com" /></div>
+          <button type="submit" class="btn-book" style="width: auto; padding: 0.7rem 1.5rem;">Simpan Pengaturan</button>
+        </form>
+      </section>`;
+    }
+    return `<section id="panel-users"${hide}>
+      <h2>Pengguna &amp; Akses</h2>
+      <p class="settings-note" style="margin: 1rem 0;">
+        <strong>Owner</strong> melihat &amp; mengatur semuanya. <strong>Admin</strong> selalu bisa
+        mengelola pesanan; centang izin tambahan (Trafik / Pengaturan / Pengguna) untuk membuka
+        menu lain. Hanya owner yang dapat mengubah role dan izin.
+      </p>
+      <div class="filter-row" style="margin-bottom: 1rem;">
+        <input type="text" id="userSearch" placeholder="Cari nama / email / WA…" />
+        <button type="button" class="btn-line" id="btnSearchUser">Cari</button>
+      </div>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Pengguna</th><th>Kontak</th><th>Role</th><th>Izin Admin</th></tr></thead>
+          <tbody id="userRows"><tr><td colspan="4">Memuat&hellip;</td></tr></tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  function wireNav() {
+    const btns = document.querySelectorAll("#adminNav button");
+    btns.forEach((b) => {
+      b.addEventListener("click", () => {
+        btns.forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        document.querySelectorAll("#adminPanels > section").forEach((sec) => {
+          sec.hidden = sec.id !== "panel-" + b.dataset.panel;
+        });
+      });
     });
-  });
+  }
 
   // ---------- pesanan ----------
+  function wireOrders() {
+    $("#orderFilter").addEventListener("change", () => { orderPage = 1; loadOrders(); });
+    $("#btnReloadOrders").addEventListener("click", loadOrders);
+    $("#btnPrevPage").addEventListener("click", () => { if (orderPage > 1) { orderPage--; loadOrders(); } });
+    $("#btnNextPage").addEventListener("click", () => {
+      if (orderPage < Math.ceil(orderTotal / 20)) { orderPage++; loadOrders(); }
+    });
+  }
+
   async function loadOrders() {
     const status = $("#orderFilter").value;
     const tbody = $("#orderRows");
@@ -94,7 +235,7 @@
           <td>${o.gender === "female" ? "Wanita" : "Pria"}<br />${d}/${m}/${y} &middot; ${esc(o.time_slot)} WAS</td>
           <td>${o.pax}</td>
           <td>${rupiah(o.total)}</td>
-          <td><select data-id="${o.id}" class="order-status st-sel">${opts}</select></td>
+          <td><select data-id="${o.id}" class="order-status">${opts}</select></td>
           <td><input type="text" class="order-note" data-id="${o.id}" value="${esc(o.note)}" placeholder="Catatan…" style="border:1px solid #E5E7EB;border-radius:.5rem;padding:.35rem .5rem;font-family:inherit;font-size:.72rem;width:9rem;" /></td>
         </tr>`;
       }).join("");
@@ -123,13 +264,6 @@
       el.disabled = false;
     }
   }
-
-  $("#orderFilter").addEventListener("change", () => { orderPage = 1; loadOrders(); });
-  $("#btnReloadOrders").addEventListener("click", loadOrders);
-  $("#btnPrevPage").addEventListener("click", () => { if (orderPage > 1) { orderPage--; loadOrders(); } });
-  $("#btnNextPage").addEventListener("click", () => {
-    if (orderPage < Math.ceil(orderTotal / 20)) { orderPage++; loadOrders(); }
-  });
 
   // ---------- trafik ----------
   async function loadStats() {
@@ -161,6 +295,33 @@
   }
 
   // ---------- pengaturan ----------
+  function wireSettings() {
+    $("#formSettings").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const alertBox = $("#settingsAlert");
+      try {
+        const res = await RVA.authFetch("/admin/settings", {
+          method: "PUT",
+          body: JSON.stringify({
+            ga4_id: $("#setGa4").value,
+            meta_pixel_id: $("#setMeta").value,
+            tiktok_pixel_id: $("#setTiktok").value,
+            google_client_id: $("#setGoogleClient").value,
+          }),
+        });
+        if (!res.ok) throw new Error();
+        sessionStorage.removeItem("rva_pixels"); // pixel dimuat ulang dengan setting baru
+        alertBox.className = "form-alert ok";
+        alertBox.textContent = "Pengaturan tersimpan ✓ — aktif di kunjungan berikutnya.";
+        alertBox.hidden = false;
+      } catch {
+        alertBox.className = "form-alert error";
+        alertBox.textContent = "Gagal menyimpan pengaturan.";
+        alertBox.hidden = false;
+      }
+    });
+  }
+
   async function loadSettings() {
     try {
       const res = await RVA.authFetch("/admin/settings");
@@ -172,32 +333,14 @@
     } catch { /* biarkan kosong */ }
   }
 
-  $("#formSettings").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const alertBox = $("#settingsAlert");
-    try {
-      const res = await RVA.authFetch("/admin/settings", {
-        method: "PUT",
-        body: JSON.stringify({
-          ga4_id: $("#setGa4").value,
-          meta_pixel_id: $("#setMeta").value,
-          tiktok_pixel_id: $("#setTiktok").value,
-          google_client_id: $("#setGoogleClient").value,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      sessionStorage.removeItem("rva_pixels"); // supaya pixel termuat ulang dengan setting baru
-      alertBox.className = "form-alert ok";
-      alertBox.textContent = "Pengaturan tersimpan ✓ — pixel aktif dalam beberapa detik di kunjungan berikutnya.";
-      alertBox.hidden = false;
-    } catch {
-      alertBox.className = "form-alert error";
-      alertBox.textContent = "Gagal menyimpan pengaturan.";
-      alertBox.hidden = false;
-    }
-  });
-
   // ---------- pengguna ----------
+  function wireUsers() {
+    $("#btnSearchUser").addEventListener("click", () => loadUsers($("#userSearch").value.trim()));
+    $("#userSearch").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); loadUsers(e.target.value.trim()); }
+    });
+  }
+
   async function loadUsers(q) {
     const tbody = $("#userRows");
     tbody.innerHTML = '<tr><td colspan="4">Memuat…</td></tr>';
@@ -213,8 +356,7 @@
         const permCell = u.role === "admin"
           ? `<div class="perm-checks">${["traffic", "settings", "users"].map((p) => {
               const on = (u.perms || "").split(",").includes(p);
-              const dis = isOwner ? "" : "disabled";
-              return `<label><input type="checkbox" data-id="${u.id}" data-perm="${p}" ${on ? "checked" : ""} ${dis} class="perm-box" /> ${p === "traffic" ? "Trafik" : p === "settings" ? "Pengaturan" : "Pengguna"}</label>`;
+              return `<label><input type="checkbox" data-id="${u.id}" data-perm="${p}" ${on ? "checked" : ""} ${isOwner ? "" : "disabled"} class="perm-box" /> ${p === "traffic" ? "Trafik" : p === "settings" ? "Pengaturan" : "Pengguna"}</label>`;
             }).join("")}</div>`
           : (u.role === "owner" ? "Semua akses" : "—");
         return `<tr>
@@ -258,9 +400,6 @@
       el.disabled = false;
     }
   }
-
-  $("#btnSearchUser").addEventListener("click", () => loadUsers($("#userSearch").value.trim()));
-  $("#userSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); loadUsers(e.target.value.trim()); } });
 
   init();
 })();

@@ -69,8 +69,9 @@
     } catch (e) { /* tracking tidak boleh mengganggu halaman */ }
   };
 
-  // pageview sekali per muat halaman
-  RVA.track("pageview");
+  // pageview sekali per muat halaman — kunjungan panel admin tidak dihitung
+  // agar statistik trafik tetap mencerminkan pengunjung asli.
+  if (!/admin\.html$/.test(location.pathname)) RVA.track("pageview");
 
   // klik tautan WhatsApp
   document.addEventListener("click", (e) => {

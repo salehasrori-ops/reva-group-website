@@ -10,6 +10,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <script>
+    // Gerbang paling awal: tanpa token, halaman ini tidak pernah dirender.
+    (function () {
+      try {
+        var t = localStorage.getItem("rva_token");
+        var u = JSON.parse(localStorage.getItem("rva_user") || "null");
+        if (!t) { location.replace("masuk.html?next=admin.html"); return; }
+        if (!u || (u.role !== "owner" && u.role !== "admin")) { location.replace("akun.html"); }
+      } catch (e) {
+        location.replace("masuk.html?next=admin.html");
+      }
+    })();
+  </script>
 </head>
 <body>
 
@@ -38,158 +51,18 @@
     </nav>
   </header>
 
-  <section class="page-hero" style="padding: 2rem 0;">
-    <svg class="pattern" aria-hidden="true">
-      <defs>
-        <pattern id="geo-page" width="56" height="56" patternUnits="userSpaceOnUse">
-          <polygon points="32,22 34.5,29.5 42,32 34.5,34.5 32,42 29.5,34.5 22,32 29.5,29.5" fill="currentColor" />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#geo-page)" />
-    </svg>
-    <div class="container">
-      <h1 style="font-size: clamp(1.375rem, 3vw, 1.75rem);">Panel <span style="color: var(--bronze-light);">Admin</span></h1>
-      <p id="adminHello" style="margin-top: 0.25rem;">Memeriksa akses&hellip;</p>
-    </div>
-  </section>
-
-  <div class="auth-wrap" id="deniedBox" hidden>
-    <div class="form-alert error" style="text-align: center;">
-      Halaman ini khusus admin Reva Group. <a href="masuk.html?next=admin.html" style="font-weight: 700; text-decoration: underline;">Masuk dengan akun admin</a>.
-    </div>
-  </div>
-
-  <div class="admin-layout" id="adminLayout" hidden>
-    <nav class="admin-nav" id="adminNav">
-      <button type="button" data-panel="orders" class="active">📋 Pesanan</button>
-      <button type="button" data-panel="traffic" hidden>📈 Trafik</button>
-      <button type="button" data-panel="settings" hidden>⚙️ Pengaturan</button>
-      <button type="button" data-panel="users" hidden>👥 Pengguna</button>
-    </nav>
-
-    <div class="admin-panel">
-
-      <!-- ===== Pesanan ===== -->
-      <section id="panel-orders">
-        <h2>Pesanan</h2>
-        <div class="filter-row" style="margin: 1rem 0;">
-          <select id="orderFilter">
-            <option value="">Semua status</option>
-            <option value="menunggu_verifikasi">Menunggu Verifikasi</option>
-            <option value="terkonfirmasi">Terkonfirmasi</option>
-            <option value="qr_terkirim">QR Terkirim</option>
-            <option value="dibatalkan">Dibatalkan</option>
-            <option value="refund">Refund</option>
-          </select>
-          <button type="button" class="btn-line" id="btnReloadOrders">Muat Ulang</button>
-          <span class="order-meta" id="orderCount"></span>
-        </div>
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Kode</th><th>Pemesan</th><th>Jadwal</th><th>Pax</th><th>Total</th><th>Status</th><th>Catatan</th>
-              </tr>
-            </thead>
-            <tbody id="orderRows"><tr><td colspan="7">Memuat&hellip;</td></tr></tbody>
-          </table>
-        </div>
-        <div class="filter-row" style="margin-top: 0.75rem;">
-          <button type="button" class="btn-line" id="btnPrevPage">&larr; Sebelumnya</button>
-          <span class="order-meta" id="pageInfo"></span>
-          <button type="button" class="btn-line" id="btnNextPage">Berikutnya &rarr;</button>
-        </div>
-      </section>
-
-      <!-- ===== Trafik ===== -->
-      <section id="panel-traffic" hidden>
-        <h2>Trafik &amp; Konversi (14 hari)</h2>
-        <div class="stat-tiles" style="margin: 1rem 0;">
-          <div class="stat-tile"><div class="n" id="stViews">—</div><div class="l">Tampilan halaman</div></div>
-          <div class="stat-tile"><div class="n" id="stVisitors">—</div><div class="l">Pengunjung unik</div></div>
-          <div class="stat-tile"><div class="n" id="stWaClicks">—</div><div class="l">Klik WhatsApp</div></div>
-          <div class="stat-tile"><div class="n" id="stOrders">—</div><div class="l">Pesanan dibuat</div></div>
-        </div>
-        <div class="bar-chart" id="chartDaily"></div>
-        <div class="profile-grid" style="padding: 1.25rem 0 0; grid-template-columns: 1fr; gap: 1rem;">
-          <div class="profile-card">
-            <h2>Halaman Terpopuler</h2>
-            <div id="topPages" class="order-meta">—</div>
-          </div>
-          <div class="profile-card">
-            <h2>Sumber Kunjungan (Referrer)</h2>
-            <div id="topRefs" class="order-meta">—</div>
-          </div>
-          <div class="profile-card">
-            <h2>Perangkat &amp; Ringkasan Pesanan</h2>
-            <div id="deviceStats" class="order-meta">—</div>
-            <div id="orderRecap" class="order-meta" style="margin-top: 0.75rem;">—</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===== Pengaturan ===== -->
-      <section id="panel-settings" hidden>
-        <h2>Pengaturan Marketing</h2>
-        <p class="settings-note" style="margin: 1rem 0;">
-          Tempel ID dari masing-masing platform lalu <strong>Simpan</strong> — pixel langsung aktif
-          di seluruh halaman situs tanpa perlu edit kode. Kosongkan untuk menonaktifkan.
-          <br />&bull; <strong>GA4</strong>: Google Analytics &rarr; Admin &rarr; Data Streams &rarr; Measurement ID (format <code>G-XXXXXXXXXX</code>)
-          <br />&bull; <strong>Meta Pixel</strong>: Meta Business Suite &rarr; Events Manager &rarr; Pixel ID (angka)
-          <br />&bull; <strong>TikTok Pixel</strong>: TikTok Ads Manager &rarr; Assets &rarr; Events &rarr; Pixel ID
-          <br />&bull; <strong>Google Client ID</strong>: Google Cloud Console &rarr; Credentials &rarr; OAuth 2.0 Client ID (untuk tombol Login Google, format <code>xxx.apps.googleusercontent.com</code>)
-        </p>
-        <form class="profile-card" style="display: grid; gap: 0.875rem; max-width: 34rem;" id="formSettings">
-          <div class="form-alert" id="settingsAlert" hidden></div>
-          <div class="field">
-            <label for="setGa4">Google Tag / GA4 Measurement ID</label>
-            <input id="setGa4" type="text" placeholder="G-XXXXXXXXXX" />
-          </div>
-          <div class="field">
-            <label for="setMeta">Meta Pixel ID</label>
-            <input id="setMeta" type="text" placeholder="123456789012345" />
-          </div>
-          <div class="field">
-            <label for="setTiktok">TikTok Pixel ID</label>
-            <input id="setTiktok" type="text" placeholder="XXXXXXXXXXXXXXXXXX" />
-          </div>
-          <div class="field">
-            <label for="setGoogleClient">Google OAuth Client ID (Login Google)</label>
-            <input id="setGoogleClient" type="text" placeholder="xxxx.apps.googleusercontent.com" />
-          </div>
-          <button type="submit" class="btn-book" style="width: auto; padding: 0.7rem 1.5rem;">Simpan Pengaturan</button>
-        </form>
-      </section>
-
-      <!-- ===== Pengguna ===== -->
-      <section id="panel-users" hidden>
-        <h2>Pengguna &amp; Akses</h2>
-        <p class="settings-note" style="margin: 1rem 0;" id="usersNote">
-          <strong>Owner</strong> melihat &amp; mengatur semuanya. <strong>Admin</strong> selalu bisa
-          mengelola pesanan; centang izin tambahan (Trafik / Pengaturan / Pengguna) untuk membuka
-          menu lain. Hanya owner yang dapat mengubah role dan izin.
-        </p>
-        <div class="filter-row" style="margin-bottom: 1rem;">
-          <input type="text" id="userSearch" placeholder="Cari nama / email / WA…" />
-          <button type="button" class="btn-line" id="btnSearchUser">Cari</button>
-        </div>
-        <div class="table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr><th>Pengguna</th><th>Kontak</th><th>Role</th><th>Izin Admin</th></tr>
-            </thead>
-            <tbody id="userRows"><tr><td colspan="4">Memuat&hellip;</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
+  <!-- Seluruh isi panel dibangun oleh js/admin.js SETELAH server memverifikasi
+       role staf. Tidak ada markup menu di sini. -->
+  <div id="adminRoot">
+    <div class="auth-wrap">
+      <p style="text-align: center; color: var(--muted); font-size: 0.875rem;">Memeriksa akses&hellip;</p>
     </div>
   </div>
 
   <footer class="site-footer">
     <div class="container">
       <div class="footer-bottom" style="margin-top: 0; border-top: 0; padding-top: 0;">
-        <p>Panel Admin &mdash; PT. Reva Sarif Group</p>
+        <p>PT. Reva Sarif Group</p>
       </div>
     </div>
   </footer>
