@@ -90,6 +90,15 @@ Backend: **Cloudflare Worker** `revagroup-api` (folder [api/](api/)) + database 
   juga memuat pixel GA4 / Meta / TikTok sesuai isian Settings — tanpa edit kode.
 - Deploy ulang API: `cd api && npx wrangler deploy`. Ganti secret: `npx wrangler secret put JWT_SECRET`.
 
+## Hosting
+
+- **Utama**: GitHub Pages (branch `main`) → https://revagroup.co.id
+- **Cadangan**: Cloudflare Pages project `revagroup` → https://revagroup.pages.dev
+  Deploy cadangan: salin `*.html`, `css/`, `js/`, `assets/` ke sebuah folder `dist` (tanpa `api/`),
+  lalu `npx wrangler pages deploy dist --project-name revagroup --branch main`.
+  Untuk memindahkan domain ke Cloudflare: ganti 4 A record `@` di hPanel Hostinger menjadi CNAME
+  ke `revagroup.pages.dev`, dan tambahkan custom domain di dashboard Cloudflare Pages.
+
 ## Jadwal Ketersediaan (AnsarPro API)
 
 Halaman `reservasi.html` menampilkan jadwal ketersediaan Rawdah secara berkala:

@@ -4,6 +4,7 @@
 const ALLOWED_ORIGINS = [
   "https://revagroup.co.id",
   "https://www.revagroup.co.id",
+  "https://revagroup.pages.dev", // cadangan hosting Cloudflare Pages
   "http://localhost:8317",
   "http://127.0.0.1:8317",
 ];
