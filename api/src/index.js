@@ -410,8 +410,61 @@ async function handleUserUpdate(req, env, origin, id, actor) {
   return json({ user: fresh }, 200, origin);
 }
 
+// ---------- jadwal ketersediaan Rawdah ----------
+// Diambil berkala oleh cron Worker (lihat wrangler.jsonc) lalu disimpan di D1,
+// sehingga situs tidak bergantung pada GitHub Actions yang bisa mati.
+async function refreshAvailability(env) {
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const now = new Date();
+  const startDate = fmt(now);
+  const endDate = fmt(new Date(now.getTime() + 90 * 86400000));
+  const res = await fetch(
+    `https://api.rawdahnabawi.com/api/appointments/availability?startDate=${startDate}&endDate=${endDate}`,
+    { headers: { Authorization: "Bearer " + env.ANSARPRO_API_KEY } }
+  );
+  if (!res.ok) throw new Error("upstream " + res.status);
+  const raw = await res.json();
+  const days = {};
+  for (const s of raw.slots || []) {
+    if (!days[s.dateKey]) days[s.dateKey] = {};
+    if (!days[s.dateKey][s.gender]) days[s.dateKey][s.gender] = [];
+    days[s.dateKey][s.gender].push([s.timeSlot, s.availableCount, s.isAvailable ? 1 : 0]);
+  }
+  const payload = { generatedAt: new Date().toISOString(), startDate, endDate, days };
+  await env.DB.prepare(
+    "INSERT INTO settings (key, value) VALUES ('availability_json', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).bind(JSON.stringify(payload)).run();
+  return payload;
+}
+
+async function handleAvailability(env, origin) {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'availability_json'").first();
+  if (row && row.value) {
+    const cached = JSON.parse(row.value);
+    const ageMin = (Date.now() - new Date(cached.generatedAt).getTime()) / 60000;
+    // cukup segar → langsung sajikan
+    if (ageMin < 20) return json(cached, 200, origin);
+    // sudah tua → coba perbarui, tapi tetap sajikan cache lama bila API bermasalah
+    try {
+      return json(await refreshAvailability(env), 200, origin);
+    } catch {
+      return json(cached, 200, origin);
+    }
+  }
+  try {
+    return json(await refreshAvailability(env), 200, origin);
+  } catch {
+    return err("UPSTREAM", "Jadwal belum tersedia.", 503, origin);
+  }
+}
+
 // ---------- router ----------
 export default {
+  // Cron: perbarui jadwal secara berkala (dikonfigurasi di wrangler.jsonc)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(refreshAvailability(env).catch(() => {}));
+  },
+
   async fetch(req, env) {
     const url = new URL(req.url);
     const origin = req.headers.get("Origin") || "";
@@ -427,6 +480,7 @@ export default {
       if (m === "POST" && path === "/auth/google") return await handleGoogle(req, env, origin);
       if (m === "POST" && path === "/track") return await handleTrack(req, env, origin);
       if (m === "GET" && path === "/public/settings") return await handleSettings(req, env, origin, true);
+      if (m === "GET" && path === "/availability") return await handleAvailability(env, origin);
       if (m === "GET" && path === "/health") return json({ ok: true }, 200, origin);
 
       // pesanan boleh tanpa login (guest) — user terlampir bila ada token

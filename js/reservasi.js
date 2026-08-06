@@ -4,7 +4,11 @@
 // API key TIDAK pernah ada di sini — hanya di GitHub Secrets.
 
 (() => {
-  const DATA_URL = "https://raw.githubusercontent.com/salehasrori-ops/reva-group-website/data/availability.json";
+  // Sumber utama: API Reva Group (diperbarui cron Cloudflare tiap 10 menit).
+  // Cadangan: berkas statis di GitHub, dipakai hanya bila API tidak terjangkau.
+  const DATA_URL = "https://revagroup-api.salehasrori.workers.dev/availability";
+  const DATA_URL_FALLBACK = "https://raw.githubusercontent.com/salehasrori-ops/reva-group-website/data/availability.json";
+  const STALE_WARN_MIN = 60; // beri peringatan bila jadwal lebih tua dari ini
   const PRICE = 165000;
   const WA_NUMBER = "6287708770871";
   const BANK = { name: "BCA", no: "4744188999", holder: "PT. REVA SARIF GROUP" };
@@ -37,6 +41,7 @@
     btnBook: $("#btnBook"),
     errBox: $("#bookingError"),
     widget: $("#bookingWidget"),
+    staleWarn: $("#staleWarn"),
     // modal pembayaran
     payModal: $("#payModal"),
     payClose: $("#payClose"),
@@ -147,7 +152,17 @@
     el.statusPill.className = "status-pill" + (has ? "" : " empty");
     if (state.data && state.data.generatedAt) {
       const t = new Date(state.data.generatedAt);
+      const ageMin = Math.round((Date.now() - t.getTime()) / 60000);
       el.updatedAt.textContent = "Update " + pad(t.getHours()) + "." + pad(t.getMinutes());
+      // Jaring pengaman: bila pembaruan jadwal tersendat, jamaah diberi tahu
+      // agar mengonfirmasi ketersediaan sebelum membayar.
+      if (el.staleWarn) {
+        const jam = Math.floor(ageMin / 60);
+        el.staleWarn.hidden = ageMin < STALE_WARN_MIN;
+        el.staleWarn.textContent =
+          "Jadwal terakhir diperbarui " + (jam >= 1 ? jam + " jam" : ageMin + " menit") +
+          " lalu — ketersediaan slot dikonfirmasi ulang oleh tim kami sebelum pembayaran diproses.";
+      }
     }
   }
 
@@ -339,12 +354,22 @@
   }
 
   // ---------- data ----------
+  async function fetchData() {
+    try {
+      const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    } catch (e) {
+      const res = await fetch(DATA_URL_FALLBACK + "?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }
+  }
+
   async function load() {
     try {
       el.btnRefresh.disabled = true;
-      const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      state.data = await res.json();
+      state.data = await fetchData();
 
       const now = new Date();
       state.months = [0, 1, 2].map((i) => {
