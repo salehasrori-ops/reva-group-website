@@ -71,6 +71,25 @@ Masih butuh data dari Reva Group (isi lalu update situs):
 - [ ] **Klaim "support 24 jam"**: pastikan memang sanggup; bila tidak, ubah ke jam operasional
       riil (ada di index, faq, kontak).
 
+## Akun, Pesanan, & Panel Admin
+
+Backend: **Cloudflare Worker** `revagroup-api` (folder [api/](api/)) + database **D1**
+`revagroup-db`, akun Cloudflare salehasrori@gmail.com. URL API:
+`https://revagroup-api.salehasrori.workers.dev` (dibatasi CORS ke revagroup.co.id).
+
+- **Akun jamaah** (`akun.html`): daftar dengan nama + email + nomor WA aktif + password;
+  masuk pakai email ATAU nomor WA. Login Google aktif otomatis begitu Google OAuth Client ID
+  diisi di Settings admin.
+- **Pesanan**: tombol "Saya Sudah Bayar" menyimpan pesanan (kode `RVA-YYMMDD-XXXX`) sebelum
+  membuka WhatsApp. Status: Menunggu Verifikasi → Terkonfirmasi → QR Terkirim / Dibatalkan /
+  Refund — diubah dari panel admin, terlihat jamaah di halaman akunnya.
+- **Panel admin** (`admin.html`): Pesanan (semua admin), Trafik / Pengaturan / Pengguna
+  (owner, atau admin yang diberi izin). Email di `OWNER_EMAILS` (api/wrangler.jsonc) otomatis
+  menjadi **owner** saat mendaftar.
+- **Tracker internal**: `js/site.js` mencatat pageview + klik WA ke D1 (dashboard Trafik);
+  juga memuat pixel GA4 / Meta / TikTok sesuai isian Settings — tanpa edit kode.
+- Deploy ulang API: `cd api && npx wrangler deploy`. Ganti secret: `npx wrangler secret put JWT_SECRET`.
+
 ## Jadwal Ketersediaan (AnsarPro API)
 
 Halaman `reservasi.html` menampilkan jadwal ketersediaan Rawdah secara berkala:
