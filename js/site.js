@@ -157,12 +157,19 @@
   loadPixels();
 
   // ---------- status login di header ----------
+  // Belum login → tombol header mengarah ke masuk.html; sudah login → akun.html + nama depan.
   function initHeader() {
     const u = RVA.user();
+    const pill = document.querySelector("a.nav-pill.outline");
     const label = document.querySelector(".nav-akun-label");
-    if (label && u) label.textContent = (u.name || "Akun").split(" ")[0];
     const mob = document.querySelector('.nav-mobile a[href="akun.html"]');
-    if (mob && u) mob.textContent = "Akun: " + (u.name || "").split(" ")[0];
+    if (u) {
+      if (label) label.textContent = (u.name || "Akun").split(" ")[0];
+      if (mob) mob.textContent = "Akun: " + (u.name || "").split(" ")[0];
+    } else {
+      if (pill) pill.setAttribute("href", "masuk.html");
+      if (mob) { mob.setAttribute("href", "masuk.html"); mob.textContent = "Masuk"; }
+    }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initHeader);

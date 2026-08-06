@@ -59,55 +59,7 @@
     </div>
   </section>
 
-  <!-- ===== Belum login ===== -->
-  <section class="auth-wrap" id="authSection" hidden>
-    <div class="auth-card">
-      <div class="auth-tabs">
-        <button type="button" id="tabLogin" class="active">Masuk</button>
-        <button type="button" id="tabRegister">Daftar</button>
-      </div>
-
-      <form class="auth-body" id="formLogin">
-        <div class="form-alert error" id="loginAlert" hidden></div>
-        <div class="field">
-          <label for="loginIdent">Email atau Nomor WhatsApp</label>
-          <input id="loginIdent" type="text" autocomplete="username" placeholder="nama@email.com / 08xxxxxxxxxx" required />
-        </div>
-        <div class="field">
-          <label for="loginPass">Password</label>
-          <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password Anda" required />
-        </div>
-        <button type="submit" class="btn-book" id="btnLogin">Masuk</button>
-        <div id="googleWrapLogin" style="display: grid; justify-content: center;"></div>
-        <p class="field hint" style="text-align: center;">Belum punya akun? Klik tab <strong>Daftar</strong> di atas.</p>
-      </form>
-
-      <form class="auth-body" id="formRegister" hidden>
-        <div class="form-alert error" id="regAlert" hidden></div>
-        <div class="field">
-          <label for="regName">Nama Lengkap</label>
-          <input id="regName" type="text" autocomplete="name" placeholder="Sesuai identitas" required />
-        </div>
-        <div class="field">
-          <label for="regEmail">Email</label>
-          <input id="regEmail" type="email" autocomplete="email" placeholder="nama@email.com" required />
-        </div>
-        <div class="field">
-          <label for="regWa">Nomor WhatsApp Aktif</label>
-          <input id="regWa" type="tel" autocomplete="tel" placeholder="08xxxxxxxxxx" required />
-          <span class="hint">Bukti reservasi &amp; QR kunjungan dikirim ke nomor ini — pastikan aktif.</span>
-        </div>
-        <div class="field">
-          <label for="regPass">Password</label>
-          <input id="regPass" type="password" autocomplete="new-password" placeholder="Minimal 8 karakter" minlength="8" required />
-        </div>
-        <button type="submit" class="btn-book" id="btnRegister">Daftar</button>
-        <div id="googleWrapReg" style="display: grid; justify-content: center;"></div>
-      </form>
-    </div>
-  </section>
-
-  <!-- ===== Sudah login ===== -->
+    <!-- ===== Sudah login ===== -->
   <section class="profile-grid" id="profileSection" hidden>
     <div style="display: grid; gap: 1.5rem;">
       <div class="profile-card">
