@@ -1,1 +1,4 @@
 reva-group-website.zip
+api/.wrangler/
+api/node_modules/
+.dev.vars

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FAQ - Reva Group</title>
-  <meta name="description" content="Pertanyaan yang sering diajukan seputar jasa reservasi Rawdah Reva Group." />
+  <title>Akun Saya - Reva Group</title>
+  <meta name="description" content="Masuk atau daftar akun Reva Group untuk melihat profil dan status pesanan reservasi Rawdah Anda." />
   <link rel="icon" type="image/png" href="assets/reva-logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -44,7 +44,7 @@
     </nav>
   </header>
 
-  <section class="page-hero">
+  <section class="page-hero" style="padding: 2.5rem 0; text-align: center;">
     <svg class="pattern" aria-hidden="true">
       <defs>
         <pattern id="geo-page" width="56" height="56" patternUnits="userSpaceOnUse">
@@ -54,109 +54,107 @@
       <rect width="100%" height="100%" fill="url(#geo-page)" />
     </svg>
     <div class="container">
-      <span class="badge badge-gold">Informasi &amp; Kebijakan</span>
-      <h1>Pertanyaan yang Sering Diajukan</h1>
-      <p>Jawaban atas pertanyaan yang paling sering diajukan seputar pemesanan reservasi Rawdah bersama Reva Group.</p>
+      <h1 style="font-size: clamp(1.5rem, 3.5vw, 2rem);" id="pageTitle">Akun <span style="color: var(--bronze-light);">Saya</span></h1>
+      <p style="margin: 0.5rem auto 0;" id="pageSub">Masuk untuk melihat profil dan status pesanan reservasi Rawdah Anda.</p>
     </div>
   </section>
 
-  <main class="prose">
-    <div class="faq-list">
-      <details class="faq-item">
-        <summary>Apa itu Rawdah?</summary>
-        <div class="faq-body">
-          Rawdah Syarifah adalah area istimewa di dalam Masjid Nabawi, Madinah, yang terletak antara
-          mimbar dan makam Rasulullah &#65018;. Dalam hadits disebutkan bahwa area ini adalah salah
-          satu taman dari taman-taman surga, sehingga menjadi tempat yang sangat dirindukan jamaah
-          untuk shalat dan berdoa.
-        </div>
-      </details>
+  <!-- ===== Belum login ===== -->
+  <section class="auth-wrap" id="authSection" hidden>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button type="button" id="tabLogin" class="active">Masuk</button>
+        <button type="button" id="tabRegister">Daftar</button>
+      </div>
 
-      <details class="faq-item">
-        <summary>Mengapa kunjungan Rawdah perlu reservasi?</summary>
-        <div class="faq-body">
-          Otoritas Arab Saudi menerapkan sistem izin (tasreh) untuk mengatur kepadatan pengunjung
-          Rawdah. Setiap jamaah memerlukan jadwal kunjungan resmi. Reva Group membantu mengurus
-          reservasi tersebut sehingga Anda tidak perlu repot mengurusnya sendiri.
+      <form class="auth-body" id="formLogin">
+        <div class="form-alert error" id="loginAlert" hidden></div>
+        <div class="field">
+          <label for="loginIdent">Email atau Nomor WhatsApp</label>
+          <input id="loginIdent" type="text" autocomplete="username" placeholder="nama@email.com / 08xxxxxxxxxx" required />
         </div>
-      </details>
+        <div class="field">
+          <label for="loginPass">Password</label>
+          <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password Anda" required />
+        </div>
+        <button type="submit" class="btn-book" id="btnLogin">Masuk</button>
+        <div id="googleWrapLogin" style="display: grid; justify-content: center;"></div>
+        <p class="field hint" style="text-align: center;">Belum punya akun? Klik tab <strong>Daftar</strong> di atas.</p>
+      </form>
 
-      <details class="faq-item">
-        <summary>Berapa biaya jasa reservasi Rawdah?</summary>
-        <div class="faq-body">
-          Biaya jasa reservasi adalah Rp 165.000 per pax. Biaya ini merupakan biaya jasa pengurusan
-          jadwal kunjungan oleh tim Reva Group.
+      <form class="auth-body" id="formRegister" hidden>
+        <div class="form-alert error" id="regAlert" hidden></div>
+        <div class="field">
+          <label for="regName">Nama Lengkap</label>
+          <input id="regName" type="text" autocomplete="name" placeholder="Sesuai identitas" required />
         </div>
-      </details>
+        <div class="field">
+          <label for="regEmail">Email</label>
+          <input id="regEmail" type="email" autocomplete="email" placeholder="nama@email.com" required />
+        </div>
+        <div class="field">
+          <label for="regWa">Nomor WhatsApp Aktif</label>
+          <input id="regWa" type="tel" autocomplete="tel" placeholder="08xxxxxxxxxx" required />
+          <span class="hint">Bukti reservasi &amp; QR kunjungan dikirim ke nomor ini — pastikan aktif.</span>
+        </div>
+        <div class="field">
+          <label for="regPass">Password</label>
+          <input id="regPass" type="password" autocomplete="new-password" placeholder="Minimal 8 karakter" minlength="8" required />
+        </div>
+        <button type="submit" class="btn-book" id="btnRegister">Daftar</button>
+        <div id="googleWrapReg" style="display: grid; justify-content: center;"></div>
+      </form>
+    </div>
+  </section>
 
-      <details class="faq-item">
-        <summary>Apakah tersedia untuk jamaah pria dan wanita?</summary>
-        <div class="faq-body">
-          Ya. Reservasi tersedia untuk jamaah pria maupun wanita dengan jadwal kunjungan terpisah,
-          mengikuti ketentuan yang berlaku di Masjid Nabawi.
+  <!-- ===== Sudah login ===== -->
+  <section class="profile-grid" id="profileSection" hidden>
+    <div style="display: grid; gap: 1.5rem;">
+      <div class="profile-card">
+        <h2>Profil</h2>
+        <div class="profile-row"><span>Nama</span><strong id="pfName">—</strong></div>
+        <div class="profile-row"><span>Email</span><strong id="pfEmail">—</strong></div>
+        <div class="profile-row"><span>WhatsApp</span><strong id="pfWa">—</strong></div>
+        <div class="profile-row"><span>Role</span><strong id="pfRole">—</strong></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+          <button type="button" class="btn-line" id="btnEditProfile">Ubah Profil</button>
+          <a class="btn-line" id="btnAdminLink" href="admin.html" hidden>Panel Admin</a>
+          <button type="button" class="btn-line btn-danger-line" id="btnLogout">Keluar</button>
         </div>
-      </details>
+      </div>
 
-      <details class="faq-item">
-        <summary>Kapan saya bisa melakukan pemesanan?</summary>
-        <div class="faq-body">
-          Pemesanan dapat dilakukan kapan saja melalui WhatsApp 0877 0877 0871. Tim kami akan
-          memproses reservasi sesuai ketersediaan slot secara real time.
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary>Berapa lama durasi kunjungan di Rawdah?</summary>
-        <div class="faq-body">
-          Durasi kunjungan umumnya sekitar 30&ndash;45 menit, mengikuti pengaturan petugas di
-          lokasi.
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary>Apa yang saya terima setelah reservasi berhasil?</summary>
-        <div class="faq-body">
-          Anda akan menerima bukti reservasi berisi jadwal kunjungan, dan QR kunjungan bila
-          tersedia, yang ditunjukkan kepada petugas saat memasuki area Rawdah.
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary>Bagaimana alur pemesanan dan pembayarannya?</summary>
-        <div class="faq-body">
-          <strong>1.</strong> Hubungi kami via WhatsApp 0877 0877 0871 dan sampaikan jadwal yang
-          diinginkan. <strong>2.</strong> Tim kami mengecek ketersediaan slot dan mengonfirmasi
-          total biaya. <strong>3.</strong> Lakukan pembayaran melalui kanal pembayaran resmi yang
-          kami informasikan. <strong>4.</strong> Setelah pembayaran terkonfirmasi, bukti reservasi
-          dan QR kunjungan (bila tersedia) dikirim via WhatsApp/email sesuai
-          <a href="kebijakan-pengiriman.html" style="color: var(--bronze-dark); font-weight: 600;">Kebijakan Pengiriman</a>.
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary>Bagaimana jika slot yang saya inginkan tidak tersedia?</summary>
-        <div class="faq-body">
-          Tim kami akan menawarkan jadwal alternatif terdekat. Jika tidak ada jadwal yang cocok dan
-          reservasi tidak diproses, dana Anda dikembalikan penuh sesuai kebijakan
-          <a href="pengembalian-dana.html" style="color: var(--bronze-dark); font-weight: 600;">Pengembalian Dana</a>.
-        </div>
-      </details>
-
-      <details class="faq-item">
-        <summary>Bagaimana cara menghubungi tim Reva Group?</summary>
-        <div class="faq-body">
-          Anda dapat menghubungi kami melalui WhatsApp 0877 0877 0871 atau email
-          revagroupoffice@gmail.com. Layanan support tersedia 24 jam.
-        </div>
-      </details>
+      <div class="profile-card" id="editCard" hidden>
+        <h2>Ubah Profil</h2>
+        <form style="display: grid; gap: 0.875rem;" id="formEdit">
+          <div class="form-alert" id="editAlert" hidden></div>
+          <div class="field">
+            <label for="editName">Nama Lengkap</label>
+            <input id="editName" type="text" required />
+          </div>
+          <div class="field">
+            <label for="editWa">Nomor WhatsApp Aktif</label>
+            <input id="editWa" type="tel" placeholder="08xxxxxxxxxx" required />
+          </div>
+          <div class="field">
+            <label for="editPass">Password Baru (opsional)</label>
+            <input id="editPass" type="password" autocomplete="new-password" placeholder="Kosongkan bila tidak diganti" />
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn-book" style="width: auto; padding: 0.7rem 1.5rem;">Simpan</button>
+            <button type="button" class="btn-line" id="btnCancelEdit">Batal</button>
+          </div>
+        </form>
+      </div>
     </div>
 
-    <div class="note">
-      Belum menemukan jawaban? Hubungi tim kami lewat halaman
-      <a href="kontak.html" style="color: var(--bronze-dark); font-weight: 600;">Kontak</a> &mdash;
-      konsultasi gratis, tanpa syarat.
+    <div class="profile-card">
+      <h2>Pesanan Saya</h2>
+      <div id="ordersList">
+        <p class="order-meta">Memuat pesanan&hellip;</p>
+      </div>
+      <a href="reservasi.html" class="btn-book" style="margin-top: 1rem; text-decoration: none;">+ Buat Reservasi Baru</a>
     </div>
-  </main>
+  </section>
 
   <footer class="site-footer">
     <div class="container">
@@ -215,5 +213,6 @@
 
   <script src="js/site.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/akun.js"></script>
 </body>
 </html>

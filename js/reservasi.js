@@ -48,6 +48,9 @@
     pmJam: $("#pmJam"),
     pmPax: $("#pmPax"),
     pmTotal: $("#pmTotal"),
+    payName: $("#payName"),
+    payWa: $("#payWa"),
+    payAlert: $("#payAlert"),
   };
 
   const state = {
@@ -245,8 +248,16 @@
     el.pmJam.textContent = state.time + " WAS";
     el.pmPax.textContent = state.pax + " jamaah";
     el.pmTotal.textContent = rupiah(PRICE * state.pax);
+    // prefill dari akun bila sedang login
+    const u = window.RVA && RVA.user();
+    if (u) {
+      if (!el.payName.value) el.payName.value = u.name || "";
+      if (!el.payWa.value && u.wa) el.payWa.value = "0" + String(u.wa).slice(2);
+    }
+    el.payAlert.hidden = true;
     el.payModal.hidden = false;
     document.body.style.overflow = "hidden";
+    if (window.RVA) { RVA.track("pay_open"); RVA.fireMarketing("begin_checkout", { value: PRICE * state.pax, currency: "IDR" }); }
   }
 
   function closePayModal() {
@@ -254,9 +265,11 @@
     document.body.style.overflow = "";
   }
 
-  function buildPaidWaLink() {
+  function buildPaidWaLink(orderCode, name) {
     const msg =
       `Assalamu'alaikum, saya sudah melakukan pembayaran untuk reservasi Rawdah:\n` +
+      (orderCode ? `• Kode Pesanan: ${orderCode}\n` : "") +
+      `• Nama: ${name}\n` +
       `• Sesi: ${genderLabel()}\n` +
       `• Tanggal: ${tanggalLabel()}\n` +
       `• Jam: ${state.time} WAS\n` +
@@ -265,6 +278,44 @@
       `Transfer ke ${BANK.name} ${BANK.no} a.n. ${BANK.holder}.\n` +
       `Berikut saya lampirkan bukti transfernya.`;
     return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
+  }
+
+  async function submitPaid() {
+    const name = el.payName.value.trim();
+    const wa = el.payWa.value.trim();
+    if (name.length < 2) {
+      el.payAlert.textContent = "Isi nama lengkap terlebih dahulu.";
+      el.payAlert.hidden = false;
+      return;
+    }
+    if (wa.replace(/\D/g, "").length < 9) {
+      el.payAlert.textContent = "Isi nomor WhatsApp aktif (contoh: 08xxxxxxxxxx).";
+      el.payAlert.hidden = false;
+      return;
+    }
+    el.payAlert.hidden = true;
+    el.btnPaid.disabled = true;
+    const prevLabel = el.btnPaid.textContent;
+    el.btnPaid.textContent = "Menyimpan pesanan…";
+    let code = "";
+    try {
+      // simpan pesanan ke sistem (guest boleh; akun terlampir bila login)
+      const res = await (window.RVA
+        ? RVA.authFetch("/orders", {
+            method: "POST",
+            body: JSON.stringify({ name, wa, gender: state.gender, dateKey: state.date, timeSlot: state.time, pax: state.pax }),
+          })
+        : Promise.reject());
+      if (res && res.ok) {
+        const data = await res.json();
+        code = data.order && data.order.code ? data.order.code : "";
+        if (window.RVA) RVA.fireMarketing("order_created", { value: PRICE * state.pax, currency: "IDR" });
+      }
+    } catch (e) { /* jika API gagal, tetap lanjut ke WA tanpa kode */ }
+    el.btnPaid.disabled = false;
+    el.btnPaid.textContent = prevLabel;
+    window.open(buildPaidWaLink(code, name), "_blank", "noopener");
+    closePayModal();
   }
 
   async function copyRekening() {
@@ -326,10 +377,7 @@
   el.payModal.addEventListener("click", (e) => { if (e.target === el.payModal) closePayModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.payModal.hidden) closePayModal(); });
   el.btnCopy.addEventListener("click", copyRekening);
-  el.btnPaid.addEventListener("click", () => {
-    window.open(buildPaidWaLink(), "_blank", "noopener");
-    closePayModal();
-  });
+  el.btnPaid.addEventListener("click", submitPaid);
 
   load();
 })();

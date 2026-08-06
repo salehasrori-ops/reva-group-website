@@ -1,0 +1,18 @@
+{
+  "name": "revagroup-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-15",
+  "vars": {
+    "OWNER_EMAILS": "salehasrori@gmail.com,revagroupoffice@gmail.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "revagroup-db",
+      "database_id": "53f036a9-7b72-493c-a991-665da8b1937e"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
