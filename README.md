@@ -1,6 +1,4 @@
-| Balapan pembelian | Klaim atomik `UPDATE ... WHERE rawdah_order_id IS NULL` sebelum memanggil penyedia — hanya satu permintaan yang lolos (K-70) |
-| Orakel waktu login | Akun tidak ada tetap menjalankan verifikasi hash boneka, agar lama respons tidak membocorkan email terdaftar (K-71) |
-| Jejak audit | Tabel `audit_log`# Reva Group — Website Jasa Reservasi Rawdah
+# Reva Group — Website Jasa Reservasi Rawdah
 
 Website statis untuk Reva Group, mengikuti struktur dan tata letak albalad.co.id dengan palet
 warna yang diambil dari logo Reva Group (hitam arang + gradasi bronze/copper). Konten disiapkan
@@ -135,6 +133,9 @@ Diaudit dan diuji 2026-08-07 — 18/18 pengujian otomatis lulus.
 | Pembatas laju | D1: login 15/IP + 8/akun per 15 menit, daftar 5/jam, Google 20/15 menit, pesanan 12/jam, tracker 300/jam |
 | Login Google | Wajib `email_verified` **dan** penerbit `accounts.google.com` — tanpa ini akun bisa diambil alih lewat pencocokan email |
 | Otorisasi | Diputuskan di server (frontend hanya kosmetik). Owner ≠ admin; admin hanya melihat menu yang diberi izin. Owner lain tak bisa diubah, role sendiri tak bisa diturunkan. |
+| Balapan pembelian | Klaim atomik `UPDATE ... WHERE rawdah_order_id IS NULL` sebelum memanggil penyedia — hanya satu permintaan yang lolos, kunci kedaluwarsa 3 menit (K-70) |
+| Orakel waktu login | Akun yang tidak ada tetap menjalankan verifikasi hash boneka, agar lama respons tidak membocorkan email mana yang terdaftar (K-71) |
+| Batas laju vendor berbayar | `/admin/orders/{id}/confirm` dibatasi 30 pembelian per jam per akun staf (K-72) |
 | Jejak audit | Tabel `audit_log`: ubah status pesanan, ubah role/izin, ubah pengaturan, ganti password, login kena limit |
 | Injeksi SQL | Seluruh kueri D1 memakai parameter terikat (`.bind()`) |
 | XSS | Semua data pengguna di panel admin melewati `esc()` sebelum masuk DOM |
