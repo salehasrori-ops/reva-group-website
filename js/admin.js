@@ -113,7 +113,11 @@
             <label for="noGender">Sesi</label>
             <select id="noGender"><option value="female">Wanita</option><option value="male">Pria</option></select>
           </div>
-          <div class="field"><label for="noDate">Tanggal</label><select id="noDate"><option value="">Memuat jadwal…</option></select></div>
+          <div class="field">
+            <label for="noDate">Tanggal</label>
+            <select id="noDate"><option value="">Memuat jadwal…</option></select>
+            <button type="button" class="btn-salin-jadwal" id="btnCopyJadwal">📋 Salin semua jadwal tanggal ini (wanita &amp; pria)</button>
+          </div>
           <div class="field"><label for="noTime">Jam (Waktu Arab Saudi)</label><select id="noTime"><option value="">Pilih tanggal dulu</option></select></div>
           <div class="field"><label for="noPax">Jumlah jamaah</label><input id="noPax" type="number" min="1" max="50" value="1" /></div>
           <div class="new-total">Total tagihan: <strong id="noTotal">Rp 165.000</strong></div>
@@ -376,11 +380,48 @@
   function isiJam() {
     const sel = $("#noTime");
     const tgl = $("#noDate").value;
-    const slots = tgl ? slotTerpakai(tgl, $("#noGender").value) : [];
+    const gender = $("#noGender").value;
+    const sesi = gender === "female" ? "Wanita" : "Pria";
+    const slots = tgl ? slotTerpakai(tgl, gender) : [];
     sel.innerHTML = slots.length
-      ? slots.map((s) => `<option value="${s[0]}">${s[0]} WAS — sisa ${s[1]}</option>`).join("")
+      ? slots.map((s) => `<option value="${s[0]}">${s[0]} WAS · ${sesi} — sisa ${s[1]}</option>`).join("")
       : '<option value="">Tidak ada jam tersedia</option>';
   }
+
+  // Daftar jam lengkap satu tanggal (kedua sesi) untuk dikirim ke jamaah.
+  function susunJadwalTanggal(tgl) {
+    const blok = (judul, arr) =>
+      arr.length
+        ? `\n${judul}\n` + arr.map((s) => `• ${s[0]} WAS — sisa ${s[1]} jamaah`).join("\n") + "\n"
+        : `\n${judul}\nBelum ada slot tersedia.\n`;
+    return `Jadwal Rawdah — ${labelTanggal(tgl)}\nSemua jam dalam Waktu Arab Saudi (WAS)\n` +
+      blok("SESI WANITA", slotTerpakai(tgl, "female")) +
+      blok("SESI PRIA", slotTerpakai(tgl, "male")) +
+      `\nBiaya jasa reservasi Rp 165.000 per jamaah.\n` +
+      `Silakan pilih jam yang diinginkan, nanti kami amankan slotnya 🙏\n\nReva Group`;
+  }
+
+  async function salinJadwalTanggal() {
+    const btn = $("#btnCopyJadwal");
+    const tgl = $("#noDate").value;
+    if (!tgl) { btn.textContent = "Pilih tanggal dulu"; setTimeout(() => { btn.textContent = teksSalinAwal; }, 2000); return; }
+    const teks = susunJadwalTanggal(tgl);
+    try {
+      await navigator.clipboard.writeText(teks);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = teks;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    const jml = slotTerpakai(tgl, "female").length + slotTerpakai(tgl, "male").length;
+    btn.textContent = `Tersalin ✓ (${jml} jam)`;
+    btn.classList.add("ok");
+    setTimeout(() => { btn.textContent = teksSalinAwal; btn.classList.remove("ok"); }, 2500);
+  }
+  const teksSalinAwal = "📋 Salin semua jadwal tanggal ini (wanita & pria)";
 
   function hitungTotal() {
     const pax = Math.max(1, parseInt($("#noPax").value, 10) || 1);
@@ -412,6 +453,7 @@
     ["#noGender"].forEach((s) => $(s).addEventListener("change", isiTanggal));
     $("#noDate").addEventListener("change", isiJam);
     $("#noPax").addEventListener("input", hitungTotal);
+    $("#btnCopyJadwal").addEventListener("click", salinJadwalTanggal);
 
     try {
       const res = await fetch(RVA.API + "/availability?t=" + Date.now(), { cache: "no-store" });

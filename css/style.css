@@ -905,6 +905,23 @@ section[id] { scroll-margin-top: 5rem; }
 .new-order-form select:focus,
 .new-order-form input:focus { outline: 2px solid var(--bronze); outline-offset: 1px; }
 
+.btn-salin-jadwal {
+  margin-top: 0.4rem;
+  width: 100%;
+  border: 1px dashed var(--bronze-line);
+  border-radius: 0.5rem;
+  background: var(--cream);
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bronze-dark);
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.btn-salin-jadwal:hover { background: var(--bronze-pale); }
+.btn-salin-jadwal.ok { border-style: solid; border-color: #86EFAC; background: #F0FDF4; color: #166534; }
+
 .new-total {
   border-radius: 0.75rem;
   background: var(--cream);
