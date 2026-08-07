@@ -1,4 +1,6 @@
-# Reva Group — Website Jasa Reservasi Rawdah
+| Balapan pembelian | Klaim atomik `UPDATE ... WHERE rawdah_order_id IS NULL` sebelum memanggil penyedia — hanya satu permintaan yang lolos (K-70) |
+| Orakel waktu login | Akun tidak ada tetap menjalankan verifikasi hash boneka, agar lama respons tidak membocorkan email terdaftar (K-71) |
+| Jejak audit | Tabel `audit_log`# Reva Group — Website Jasa Reservasi Rawdah
 
 Website statis untuk Reva Group, mengikuti struktur dan tata letak albalad.co.id dengan palet
 warna yang diambil dari logo Reva Group (hitam arang + gradasi bronze/copper). Konten disiapkan

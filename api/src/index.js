@@ -170,6 +170,10 @@ async function verifyPassword(password, stored) {
   }
 }
 
+// Hash boneka berformat sama (6 putaran) — dipakai saat akun tidak ditemukan
+// agar biaya komputasinya setara dan waktu balasan tidak jadi orakel.
+const DUMMY_HASH = "100000x6.MwBxEuyFa9WASDfE6Dv2nA.lU69U082oapXqQMUgX68W63hpT9PFWfiNWN0BCtLmBM";
+
 // 08xx / +628xx / 628xx → 628xx
 function normalizeWa(wa) {
   let d = String(wa || "").replace(/\D/g, "");
@@ -252,7 +256,13 @@ async function handleLogin(req, env, origin) {
     const wa = normalizeWa(ident);
     user = wa ? await env.DB.prepare("SELECT * FROM users WHERE wa = ?").bind(wa).first() : null;
   }
-  if (!user || !user.pass_hash || !(await verifyPassword(password, user.pass_hash))) {
+  // Akun tidak ada / tanpa password tetap menjalankan verifikasi boneka, supaya
+  // lama respons tidak membocorkan email mana yang terdaftar (orakel waktu).
+  // Diuji 2026-08-07: sebelum perbaikan, akun terdaftar ~250 ms vs tidak terdaftar
+  // ~180 ms — selisih itu cukup untuk mendaftar akun yang ada.
+  const hashUji = (user && user.pass_hash) ? user.pass_hash : DUMMY_HASH;
+  const cocok = await verifyPassword(password, hashUji);
+  if (!user || !user.pass_hash || !cocok) {
     return err("INVALID_LOGIN", "Email/nomor WA atau password salah.", 401, origin);
   }
   // promosi owner bila email terdaftar sebagai owner
@@ -582,6 +592,20 @@ async function handleConfirmPurchase(req, env, origin, id, actor) {
     return err("NO_PROOF", "Unggah bukti transfer dulu sebelum mengonfirmasi pembelian.", 400, origin);
   }
 
+  // Serialisasi operasi yang membelanjakan uang (pelajaran K-25): memeriksa lalu
+  // menulis itu dua langkah — dua permintaan bersamaan bisa lolos berdua dan
+  // membeli dua kali. Klaim di bawah bersifat atomik: hanya satu permintaan yang
+  // akan melihat changes = 1. Kunci kedaluwarsa 3 menit agar percobaan yang mati
+  // di tengah jalan tidak mengunci pesanan selamanya.
+  const klaim = await env.DB.prepare(
+    "UPDATE orders SET purchase_lock = datetime('now') WHERE id = ? AND rawdah_order_id IS NULL " +
+    "AND (purchase_lock IS NULL OR purchase_lock < datetime('now', '-3 minutes'))"
+  ).bind(id).run();
+  if (!klaim.meta || klaim.meta.changes !== 1) {
+    return err("SEDANG_DIPROSES",
+      "Pembelian pesanan ini sedang diproses permintaan lain. Tunggu sebentar lalu muat ulang.", 409, origin);
+  }
+
   const payload = {
     dateKey: order.date_key,
     timeSlot: order.time_slot,
@@ -604,6 +628,9 @@ async function handleConfirmPurchase(req, env, origin, id, actor) {
     });
     bodyText = await res.text();
   } catch (e) {
+    // Gagal menghubungi penyedia: lepas kunci agar admin bisa mencoba lagi.
+    // Idempotency-Key yang sama menjaga percobaan ulang tidak jadi beli dua kali.
+    await env.DB.prepare("UPDATE orders SET purchase_lock = NULL WHERE id = ?").bind(id).run();
     await audit(env, req, actor, "purchase_failed", order.code, "jaringan: " + (e && e.message));
     return err("UPSTREAM", "Tidak dapat menghubungi sistem slot Rawdah. Status pesanan tidak diubah.", 502, origin);
   }
@@ -614,7 +641,7 @@ async function handleConfirmPurchase(req, env, origin, id, actor) {
   if (!res.ok) {
     const pesan = (data && data.error && data.error.message) || bodyText.slice(0, 200);
     await audit(env, req, actor, "purchase_failed", order.code, `HTTP ${res.status}: ${pesan}`);
-    await env.DB.prepare("UPDATE orders SET purchase_note = ? WHERE id = ?")
+    await env.DB.prepare("UPDATE orders SET purchase_note = ?, purchase_lock = NULL WHERE id = ?")
       .bind(`Gagal ${new Date().toISOString().slice(0, 16)}: ${pesan}`.slice(0, 500), id).run();
     return json({ error: { code: "PURCHASE_FAILED", message: "Pembelian slot Rawdah ditolak: " + pesan } }, 502, origin);
   }
@@ -796,6 +823,11 @@ export default {
       const confirmMatch = path.match(/^\/admin\/orders\/(\d+)\/confirm$/);
       if (m === "POST" && confirmMatch) {
         if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
+        // Endpoint ini memanggil penyedia berbayar — beri batas laju walau hanya
+        // bisa diakses staf (daftar periksa: "apa pun yang memanggil vendor berbayar").
+        if (!(await rateLimit(env, "beli:" + user.id, 30, 3600))) {
+          return err("RATE_LIMIT", "Terlalu banyak pembelian dalam satu jam. Hubungi owner bila ini disengaja.", 429, origin);
+        }
         return await handleConfirmPurchase(req, env, origin, parseInt(confirmMatch[1], 10), user);
       }
       if (m === "GET" && path === "/admin/stats") {
