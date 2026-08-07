@@ -21,9 +21,13 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Requested-With",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
+    // Respons API tidak boleh ditebak tipenya, dirujuk, atau disimpan cache
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
   };
 }
 
@@ -32,6 +36,50 @@ function json(data, status, origin) {
     status: status || 200,
     headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
   });
+}
+
+// Perbandingan waktu-konstan: mencegah kebocoran informasi lewat selisih waktu
+function timingSafeEqual(a, b) {
+  const x = String(a), y = String(b);
+  if (x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return diff === 0;
+}
+
+// ---------- pembatas laju (D1) ----------
+// Menahan brute force login dan spam pemesanan. Jendela geser sederhana.
+async function rateLimit(env, key, limit, windowSec) {
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - windowSec;
+  try {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM rate_limits WHERE k = ? AND ts >= ?")
+      .bind(key, since).first();
+    if (row && row.n >= limit) return false;
+    await env.DB.prepare("INSERT INTO rate_limits (k, ts) VALUES (?, ?)").bind(key, now).run();
+    // bersih-bersih sesekali agar tabel tidak menumpuk
+    if (Math.random() < 0.02) {
+      await env.DB.prepare("DELETE FROM rate_limits WHERE ts < ?").bind(now - 86400).run();
+    }
+    return true;
+  } catch {
+    return true; // jangan sampai gangguan DB mengunci pengguna sah
+  }
+}
+
+function clientIp(req) {
+  return req.headers.get("CF-Connecting-IP") || "0.0.0.0";
+}
+
+// ---------- jejak audit ----------
+async function audit(env, req, actor, action, target, detail) {
+  try {
+    await env.DB.prepare(
+      "INSERT INTO audit_log (actor_id, actor_email, action, target, detail, ip) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(actor ? actor.id : null, actor ? actor.email : null, action,
+           target ? String(target).slice(0, 120) : null,
+           detail ? String(detail).slice(0, 500) : null, clientIp(req)).run();
+  } catch { /* audit tidak boleh menggagalkan operasi */ }
 }
 
 function err(code, message, status, origin) {
@@ -65,6 +113,9 @@ async function verifyJwt(token, secret) {
   try {
     const [h, b, s] = token.split(".");
     if (!h || !b || !s) return null;
+    // Kunci algoritma ke HS256 — tolak token yang mengaku "none" atau algoritma lain
+    const head = JSON.parse(new TextDecoder().decode(b64urlToBytes(h)));
+    if (head.alg !== "HS256") return null;
     const key = await hmacKey(secret);
     const ok = await crypto.subtle.verify("HMAC", key, b64urlToBytes(s), enc.encode(`${h}.${b}`));
     if (!ok) return null;
@@ -76,20 +127,44 @@ async function verifyJwt(token, secret) {
   }
 }
 
+// PBKDF2-SHA256 berantai.
+//
+// Cloudflare Workers MENOLAK iterations > 100.000 ("Pbkdf2 failed: iteration
+// counts above 100000 are not supported" — diuji 2026-08-07). Untuk tetap
+// mencapai faktor kerja setara anjuran OWASP (600.000), keluaran satu putaran
+// dijadikan masukan putaran berikutnya: ROUNDS x 100.000 iterasi efektif.
+//
+// Format hash: "<iter>x<rounds>.<salt>.<hash>" — format lama "<iter>.<salt>.<hash>"
+// tetap dikenali sebagai 1 putaran, jadi password lama tidak perlu direset.
+const PBKDF2_ITER = 100000;
+const PBKDF2_ROUNDS = 6; // 6 x 100.000 = 600.000 iterasi efektif
+
+async function deriveChain(passwordBytes, salt, iter, rounds) {
+  let material = passwordBytes;
+  let bits;
+  for (let i = 0; i < rounds; i++) {
+    const key = await crypto.subtle.importKey("raw", material, "PBKDF2", false, ["deriveBits"]);
+    bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, key, 256);
+    material = new Uint8Array(bits);
+  }
+  return bits;
+}
+
 async function hashPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
-  return `100000.${b64url(salt)}.${b64url(bits)}`;
+  const bits = await deriveChain(enc.encode(password), salt, PBKDF2_ITER, PBKDF2_ROUNDS);
+  return `${PBKDF2_ITER}x${PBKDF2_ROUNDS}.${b64url(salt)}.${b64url(bits)}`;
 }
 
 async function verifyPassword(password, stored) {
   try {
-    const [iterStr, saltB64, hashB64] = stored.split(".");
+    const [spec, saltB64, hashB64] = stored.split(".");
+    const [iterStr, roundStr] = spec.split("x"); // tanpa "x" = format lama, 1 putaran
     const salt = b64urlToBytes(saltB64);
-    const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: parseInt(iterStr, 10), hash: "SHA-256" }, key, 256);
-    return b64url(bits) === hashB64;
+    const bits = await deriveChain(
+      enc.encode(password), salt, parseInt(iterStr, 10), parseInt(roundStr || "1", 10)
+    );
+    return timingSafeEqual(b64url(bits), hashB64);
   } catch {
     return false;
   }
@@ -125,7 +200,11 @@ async function authUser(req, env) {
   if (!auth.startsWith("Bearer ")) return null;
   const payload = await verifyJwt(auth.slice(7), env.JWT_SECRET);
   if (!payload) return null;
-  return env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.uid).first();
+  const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.uid).first();
+  if (!user) return null;
+  // Token terbitan sebelum ganti password otomatis gugur
+  if ((payload.tv || 0) !== (user.token_ver || 0)) return null;
+  return user;
 }
 
 function ownerEmails(env) {
@@ -133,7 +212,7 @@ function ownerEmails(env) {
 }
 
 async function issueToken(user, env) {
-  return signJwt({ uid: user.id }, env.JWT_SECRET, 30);
+  return signJwt({ uid: user.id, tv: user.token_ver || 0 }, env.JWT_SECRET, 30);
 }
 
 // ---------- handlers ----------
@@ -195,6 +274,15 @@ async function handleGoogle(req, env, origin) {
   if (!r.ok) return err("GOOGLE", "Verifikasi Google gagal.", 401, origin);
   const info = await r.json();
   if (info.aud !== clientId) return err("GOOGLE", "Client ID tidak cocok.", 401, origin);
+  // Penerbit harus Google asli
+  if (info.iss !== "accounts.google.com" && info.iss !== "https://accounts.google.com") {
+    return err("GOOGLE", "Penerbit token tidak sah.", 401, origin);
+  }
+  // Email WAJIB terverifikasi: tanpa ini, akun Google beralamat email milik orang
+  // lain bisa dipakai mengambil alih akun yang sudah ada (pencocokan by email).
+  if (info.email_verified !== true && info.email_verified !== "true") {
+    return err("GOOGLE", "Email Google belum terverifikasi.", 401, origin);
+  }
   const email = String(info.email || "").toLowerCase();
   const sub = String(info.sub || "");
   if (!email || !sub) return err("GOOGLE", "Data Google tidak lengkap.", 401, origin);
@@ -225,16 +313,26 @@ async function handleMe(req, env, origin, user) {
     const dupe = await env.DB.prepare("SELECT id FROM users WHERE wa = ? AND id != ?").bind(wa, user.id).first();
     if (dupe) return err("EXISTS", "Nomor WhatsApp sudah dipakai akun lain.", 409, origin);
   }
+  let rotated = false;
   if (b.password !== undefined) {
     const password = String(b.password);
     if (password.length < 8) return err("VALIDATION", "Password minimal 8 karakter.", 400, origin);
     const pass_hash = await hashPassword(password);
-    await env.DB.prepare("UPDATE users SET name = ?, wa = ?, pass_hash = ? WHERE id = ?").bind(name, wa, pass_hash, user.id).run();
+    // Naikkan versi token: seluruh sesi lama (mis. di perangkat yang hilang) gugur
+    await env.DB.prepare("UPDATE users SET name = ?, wa = ?, pass_hash = ?, token_ver = token_ver + 1 WHERE id = ?")
+      .bind(name, wa, pass_hash, user.id).run();
+    rotated = true;
   } else {
     await env.DB.prepare("UPDATE users SET name = ?, wa = ? WHERE id = ?").bind(name, wa, user.id).run();
   }
   const fresh = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
-  return json({ user: publicUser(fresh) }, 200, origin);
+  const out = { user: publicUser(fresh) };
+  // Ganti password memutus token lama — beri token baru agar sesi ini tetap hidup
+  if (rotated) {
+    out.token = await issueToken(fresh, env);
+    await audit(env, req, user, "password_change", "user:" + user.id, null);
+  }
+  return json(out, 200, origin);
 }
 
 function genOrderCode() {
@@ -296,7 +394,7 @@ async function handleAdminOrders(req, env, origin, url) {
   return json({ orders: results, total: cnt.n, page, per }, 200, origin);
 }
 
-async function handleAdminOrderUpdate(req, env, origin, id) {
+async function handleAdminOrderUpdate(req, env, origin, id, actor) {
   const b = await req.json().catch(() => ({}));
   const cur = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(id).first();
   if (!cur) return err("NOT_FOUND", "Pesanan tidak ditemukan.", 404, origin);
@@ -304,6 +402,9 @@ async function handleAdminOrderUpdate(req, env, origin, id) {
   if (!ORDER_STATUSES.includes(status)) return err("VALIDATION", "Status tidak dikenal.", 400, origin);
   const note = b.note !== undefined ? String(b.note).slice(0, 500) : cur.note;
   await env.DB.prepare("UPDATE orders SET status = ?, note = ?, updated_at = datetime('now') WHERE id = ?").bind(status, note, id).run();
+  if (status !== cur.status) {
+    await audit(env, req, actor, "order_status", cur.code, `${cur.status} -> ${status}`);
+  }
   const fresh = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(id).first();
   return json({ order: fresh }, 200, origin);
 }
@@ -355,7 +456,7 @@ async function handleStats(env, origin) {
   }, 200, origin);
 }
 
-async function handleSettings(req, env, origin, isPublic) {
+async function handleSettings(req, env, origin, isPublic, actor) {
   const KEYS = ["ga4_id", "meta_pixel_id", "tiktok_pixel_id", "google_client_id"];
   if (req.method === "GET" || isPublic) {
     const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
@@ -370,8 +471,11 @@ async function handleSettings(req, env, origin, isPublic) {
       stmts.push(env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, String(b[k]).trim().slice(0, 120)));
     }
   }
-  if (stmts.length) await env.DB.batch(stmts);
-  return handleSettings(new Request(req.url, { method: "GET" }), env, origin, false);
+  if (stmts.length) {
+    await env.DB.batch(stmts);
+    await audit(env, req, actor, "settings_update", null, KEYS.filter((k) => b[k] !== undefined).join(","));
+  }
+  return handleSettings(new Request(req.url, { method: "GET" }), env, origin, false, actor);
 }
 
 async function handleUsers(req, env, origin, url) {
@@ -407,6 +511,10 @@ async function handleUserUpdate(req, env, origin, id, actor) {
     perms = String(b.perms).split(",").map((s) => s.trim()).filter((p) => ADMIN_PERMS.includes(p)).join(",");
   }
   await env.DB.prepare("UPDATE users SET role = ?, perms = ? WHERE id = ?").bind(role, perms, id).run();
+  if (role !== target.role || perms !== target.perms) {
+    await audit(env, req, actor, "user_access", target.email || ("user:" + id),
+      `role ${target.role} -> ${role}; perms "${target.perms}" -> "${perms}"`);
+  }
   const fresh = await env.DB.prepare("SELECT id, name, email, wa, role, perms, created_at FROM users WHERE id = ?").bind(id).first();
   return json({ user: fresh }, 200, origin);
 }
@@ -474,18 +582,54 @@ export default {
 
     if (m === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
 
+    // Kunci lintas situs: permintaan yang mengubah data hanya diterima dari asal
+    // yang dikenal. Formulir dari situs lain selalu mengirim Origin miliknya,
+    // sehingga tertolak di sini (browser mengirim Origin pada setiap POST).
+    if (m !== "GET" && origin && !ALLOWED_ORIGINS.includes(origin)) {
+      return err("FORBIDDEN_ORIGIN", "Asal permintaan tidak dikenal.", 403, origin);
+    }
+
+    const ip = clientIp(req);
+
     try {
       // publik
-      if (m === "POST" && path === "/auth/register") return await handleRegister(req, env, origin);
-      if (m === "POST" && path === "/auth/login") return await handleLogin(req, env, origin);
-      if (m === "POST" && path === "/auth/google") return await handleGoogle(req, env, origin);
-      if (m === "POST" && path === "/track") return await handleTrack(req, env, origin);
+      if (m === "POST" && path === "/auth/register") {
+        if (!(await rateLimit(env, "reg:" + ip, 5, 3600))) {
+          return err("RATE_LIMIT", "Terlalu banyak percobaan pendaftaran. Coba lagi nanti.", 429, origin);
+        }
+        return await handleRegister(req, env, origin);
+      }
+      if (m === "POST" && path === "/auth/login") {
+        // dua lapis: per alamat IP dan per akun yang dituju
+        const body = await req.clone().json().catch(() => ({}));
+        const ident = String(body.identifier || "").trim().toLowerCase().slice(0, 80);
+        const okIp = await rateLimit(env, "login:ip:" + ip, 15, 900);
+        const okId = ident ? await rateLimit(env, "login:id:" + ident, 8, 900) : true;
+        if (!okIp || !okId) {
+          await audit(env, req, null, "login_rate_limited", ident || null, null);
+          return err("RATE_LIMIT", "Terlalu banyak percobaan masuk. Coba lagi dalam 15 menit.", 429, origin);
+        }
+        return await handleLogin(req, env, origin);
+      }
+      if (m === "POST" && path === "/auth/google") {
+        if (!(await rateLimit(env, "goog:" + ip, 20, 900))) {
+          return err("RATE_LIMIT", "Terlalu banyak percobaan. Coba lagi nanti.", 429, origin);
+        }
+        return await handleGoogle(req, env, origin);
+      }
+      if (m === "POST" && path === "/track") {
+        if (!(await rateLimit(env, "trk:" + ip, 300, 3600))) return json({ ok: true }, 200, origin);
+        return await handleTrack(req, env, origin);
+      }
       if (m === "GET" && path === "/public/settings") return await handleSettings(req, env, origin, true);
       if (m === "GET" && path === "/availability") return await handleAvailability(env, origin);
       if (m === "GET" && path === "/health") return json({ ok: true }, 200, origin);
 
       // pesanan boleh tanpa login (guest) — user terlampir bila ada token
       if (m === "POST" && path === "/orders") {
+        if (!(await rateLimit(env, "ord:" + ip, 12, 3600))) {
+          return err("RATE_LIMIT", "Terlalu banyak pemesanan dari perangkat ini. Hubungi kami via WhatsApp.", 429, origin);
+        }
         const user = await authUser(req, env);
         return await handleCreateOrder(req, env, origin, user);
       }
@@ -508,7 +652,7 @@ export default {
       const orderMatch = path.match(/^\/admin\/orders\/(\d+)$/);
       if (m === "PATCH" && orderMatch) {
         if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
-        return await handleAdminOrderUpdate(req, env, origin, parseInt(orderMatch[1], 10));
+        return await handleAdminOrderUpdate(req, env, origin, parseInt(orderMatch[1], 10), user);
       }
       if (m === "GET" && path === "/admin/stats") {
         if (!hasPerm(user, "traffic")) return err("FORBIDDEN", "Tidak punya akses trafik.", 403, origin);
@@ -516,7 +660,7 @@ export default {
       }
       if ((m === "GET" || m === "PUT") && path === "/admin/settings") {
         if (!hasPerm(user, "settings")) return err("FORBIDDEN", "Tidak punya akses pengaturan.", 403, origin);
-        return await handleSettings(req, env, origin, false);
+        return await handleSettings(req, env, origin, false, user);
       }
       if (m === "GET" && path === "/admin/users") {
         if (!hasPerm(user, "users")) return err("FORBIDDEN", "Tidak punya akses pengguna.", 403, origin);
@@ -530,6 +674,8 @@ export default {
 
       return err("NOT_FOUND", "Endpoint tidak ditemukan.", 404, origin);
     } catch (e) {
+      // Detail teknis hanya ke log server; pengguna cukup menerima pesan umum.
+      console.error("API error", m, path, e && e.message, e && e.stack);
       return err("INTERNAL", "Terjadi kesalahan server.", 500, origin);
     }
   },

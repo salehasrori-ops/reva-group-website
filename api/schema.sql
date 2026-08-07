@@ -56,3 +56,28 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('meta_pixel_id', ''),
   ('tiktok_pixel_id', ''),
   ('google_client_id', '');
+
+-- ===== Pengerasan keamanan (mengikuti standar Albalad/AnsarPro) =====
+
+-- Versi token: dinaikkan saat ganti password agar sesi lama otomatis gugur
+ALTER TABLE users ADD COLUMN token_ver INTEGER NOT NULL DEFAULT 0;
+
+-- Pembatas laju: lawan brute force login & spam pemesanan
+CREATE TABLE IF NOT EXISTS rate_limits (
+  k  TEXT NOT NULL,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rl ON rate_limits(k, ts);
+
+-- Jejak audit tindakan staf (ubah status pesanan, role, pengaturan)
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL DEFAULT (datetime('now')),
+  actor_id INTEGER,
+  actor_email TEXT,
+  action TEXT NOT NULL,
+  target TEXT,
+  detail TEXT,
+  ip TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);

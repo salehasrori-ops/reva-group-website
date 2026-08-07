@@ -21,7 +21,12 @@
       localStorage.removeItem("rva_user");
     },
     authFetch: (path, opts = {}) => {
-      const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      // X-Requested-With: header khusus yang tidak bisa dipasang formulir lintas
+      // situs — lapis tambahan anti-CSRF, sejalan standar Albalad.
+      const headers = Object.assign(
+        { "Content-Type": "application/json", "X-Requested-With": "RevaGroup" },
+        opts.headers || {}
+      );
       const t = RVA.token();
       if (t) headers["Authorization"] = "Bearer " + t;
       return fetch(API + path, Object.assign({}, opts, { headers }));

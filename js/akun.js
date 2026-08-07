@@ -98,6 +98,9 @@
       const res = await RVA.authFetch("/me", { method: "PATCH", body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) return showAlert($("#editAlert"), data.error ? data.error.message : "Gagal menyimpan.", false);
+      // Ganti password menggugurkan token lama; server mengirim token pengganti
+      // agar sesi di perangkat ini tetap hidup (perangkat lain otomatis keluar).
+      if (data.token) RVA.setAuth(data.token, data.user);
       RVA.setUser(data.user);
       showAlert($("#editAlert"), "Profil tersimpan ✓", true);
       showProfile(data.user);

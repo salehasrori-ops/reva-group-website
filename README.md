@@ -90,6 +90,32 @@ Backend: **Cloudflare Worker** `revagroup-api` (folder [api/](api/)) + database 
   juga memuat pixel GA4 / Meta / TikTok sesuai isian Settings — tanpa edit kode.
 - Deploy ulang API: `cd api && npx wrangler deploy`. Ganti secret: `npx wrangler secret put JWT_SECRET`.
 
+## Keamanan
+
+Diselaraskan dengan standar sistem Albalad/AnsarPro (`04 Engineering/Security Review.md`).
+Diaudit dan diuji 2026-08-07 — 18/18 pengujian otomatis lulus.
+
+| Aspek | Penerapan di Reva Group |
+| --- | --- |
+| Hash password | PBKDF2-SHA256 **berantai 6 x 100.000 = 600.000 iterasi efektif** (setara anjuran OWASP). Cloudflare menolak `iterations` > 100.000, sehingga keluaran tiap putaran jadi masukan putaran berikutnya. Format lama tetap terbaca — password lama tidak perlu direset. |
+| Perbandingan hash | Waktu-konstan (`timingSafeEqual`) |
+| Sesi | JWT HS256, algoritma dikunci (token `alg: none` ditolak). Kolom `token_ver` naik saat ganti password → seluruh sesi lama gugur, perangkat ini dapat token pengganti. |
+| Anti-CSRF | Permintaan non-GET dengan `Origin` di luar daftar izin ditolak **403**. Frontend juga mengirim `X-Requested-With` (lapis kedua). |
+| Pembatas laju | D1: login 15/IP + 8/akun per 15 menit, daftar 5/jam, Google 20/15 menit, pesanan 12/jam, tracker 300/jam |
+| Login Google | Wajib `email_verified` **dan** penerbit `accounts.google.com` — tanpa ini akun bisa diambil alih lewat pencocokan email |
+| Otorisasi | Diputuskan di server (frontend hanya kosmetik). Owner ≠ admin; admin hanya melihat menu yang diberi izin. Owner lain tak bisa diubah, role sendiri tak bisa diturunkan. |
+| Jejak audit | Tabel `audit_log`: ubah status pesanan, ubah role/izin, ubah pengaturan, ganti password, login kena limit |
+| Injeksi SQL | Seluruh kueri D1 memakai parameter terikat (`.bind()`) |
+| XSS | Semua data pengguna di panel admin melewati `esc()` sebelum masuk DOM |
+| Kebocoran error | Detail teknis hanya ke log server (`console.error`); pengguna menerima pesan umum |
+| Header situs | CSP, `X-Frame-Options: DENY`, HSTS, `Permissions-Policy`, `nosniff`, `Referrer-Policy` lewat `_headers` (**hanya aktif di Cloudflare Pages** — GitHub Pages tidak mendukung header khusus) |
+
+**Risiko yang diterima (bukan bug):**
+
+1. Token disimpan di `localStorage`. Aman dari CSRF, tetapi bisa dicuri lewat XSS — karena itu CSP dan `esc()` menjadi pertahanan utama.
+2. Belum ada 2FA untuk akun owner.
+3. Belum ada rotasi refresh-token seperti Albalad; sebagai gantinya `token_ver` memberi pemutusan sesi menyeluruh saat ganti password.
+
 ## Hosting
 
 - **Utama**: GitHub Pages (branch `main`) → https://revagroup.co.id
