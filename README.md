@@ -90,6 +90,35 @@ Backend: **Cloudflare Worker** `revagroup-api` (folder [api/](api/)) + database 
   juga memuat pixel GA4 / Meta / TikTok sesuai isian Settings — tanpa edit kode.
 - Deploy ulang API: `cd api && npx wrangler deploy`. Ganti secret: `npx wrangler secret put JWT_SECRET`.
 
+## Alur Pesanan & Pembelian Slot
+
+Dua jalur masuk pesanan, keduanya bermuara ke proses yang sama:
+
+1. **Jamaah memesan sendiri** di `reservasi.html` → pilih slot → modal pembayaran (BCA) →
+   tombol "Saya Sudah Bayar" membuka WhatsApp.
+2. **Admin membuatkan pesanan** di panel admin tab **➕ Pesanan Baru** (untuk jamaah yang
+   menghubungi lewat telepon/WA) → isi nama, nomor WA, slot, jumlah → sistem membuat pesanan
+   dan **menyusun pesan tagihan siap kirim** (kode pesanan, jadwal, total, rekening resmi).
+   Tersedia tombol "Kirim via WhatsApp" (langsung ke nomor jamaah) dan "Salin Pesan".
+
+Lalu di tab **Pesanan**:
+
+3. Jamaah transfer → admin **unggah bukti transfer** pada baris pesanan (gambar dikompres di
+   browser, maksimal 600 KB, tersimpan di tabel `proofs`).
+4. Admin menekan **Konfirmasi & Beli Slot** → sistem membeli slot Rawdah sungguhan, lalu status
+   menjadi Terkonfirmasi dan `rawdah_order_id` tersimpan.
+
+**Pengaman pembelian** (pembelian slot TIDAK BISA dibatalkan — API Rawdah tak punya endpoint batal):
+
+| Risiko | Penanganan |
+| --- | --- |
+| Pembelian ganda saat koneksi ngadat | `Idempotency-Key` = kode pesanan (stabil saat diulang) |
+| Pesanan dibeli dua kali | Ditolak bila `rawdah_order_id` sudah terisi |
+| Membeli sebelum dibayar | Ditolak bila belum ada bukti transfer |
+| Status berbohong soal slot | Status `terkonfirmasi` **tidak bisa** dipilih manual dari dropdown |
+| `genderId` salah bentuk | Dikirim sebagai string `"Male"`/`"Female"` (khusus endpoint beli) |
+| Pembelian gagal | Status tidak diubah; alasan asli ditampilkan & dicatat di `audit_log` |
+
 ## Keamanan
 
 Diselaraskan dengan standar sistem Albalad/AnsarPro (`04 Engineering/Security Review.md`).
@@ -125,12 +154,12 @@ Diaudit dan diuji 2026-08-07 — 18/18 pengujian otomatis lulus.
   Untuk memindahkan domain ke Cloudflare: ganti 4 A record `@` di hPanel Hostinger menjadi CNAME
   ke `revagroup.pages.dev`, dan tambahkan custom domain di dashboard Cloudflare Pages.
 
-## Jadwal Ketersediaan (AnsarPro API)
+## Jadwal Ketersediaan (API Slot Rawdah)
 
 Halaman `reservasi.html` menampilkan jadwal ketersediaan Rawdah secara berkala:
 
 1. GitHub Actions ([.github/workflows/availability.yml](.github/workflows/availability.yml))
-   memanggil `GET /appointments/availability` AnsarPro API tiap ±10 menit.
+   memanggil `GET /appointments/availability` API slot Rawdah tiap ±10 menit.
 2. API key tersimpan **hanya** di repo secret `ANSARPRO_API_KEY` — jangan pernah menaruh key
    `ansar_live_…` di file situs; situs ini publik dan key tersebut bisa dipakai belanja.
 3. Hasilnya diterbitkan sebagai `availability.json` di branch `data` (satu commit, force push).

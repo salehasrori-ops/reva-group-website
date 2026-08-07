@@ -844,6 +844,119 @@ section[id] { scroll-margin-top: 5rem; }
 }
 .booking-error a { font-weight: 700; color: #92400E; text-decoration: underline; }
 
+/* Panel admin — bukti transfer & pembelian slot */
+.beli-box { display: grid; gap: 0.35rem; }
+.proof-pick { display: block; cursor: pointer; }
+.proof-label {
+  display: block;
+  border: 1px dashed var(--bronze-line);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--bronze-dark);
+  text-align: center;
+  background: var(--cream);
+  transition: background-color 0.2s;
+}
+.proof-pick:hover .proof-label { background: var(--bronze-pale); }
+.proof-label.ok { border-style: solid; border-color: #86EFAC; background: #F0FDF4; color: #166534; }
+
+.btn-beli {
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--bronze);
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.btn-beli:hover:not(:disabled) { background: var(--bronze-strong); }
+.btn-beli:disabled { background: #D1D5DB; color: #6B7280; cursor: not-allowed; }
+
+.beli-ok {
+  border-radius: 0.5rem;
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #166534;
+  text-align: center;
+}
+.beli-ok span { font-weight: 500; color: #15803D; }
+
+/* Panel admin — formulir pesanan baru */
+.new-order-form { display: grid; gap: 0.875rem; max-width: 30rem; }
+.new-order-form select,
+.new-order-form input {
+  width: 100%;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.625rem;
+  padding: 0.6rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: #fff;
+  color: var(--text);
+}
+.new-order-form select:focus,
+.new-order-form input:focus { outline: 2px solid var(--bronze); outline-offset: 1px; }
+
+.new-total {
+  border-radius: 0.75rem;
+  background: var(--cream);
+  border: 1px solid var(--bronze-line);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.new-total strong { color: var(--bronze-dark); font-size: 1.125rem; }
+
+.new-done {
+  border-radius: 0.875rem;
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  padding: 1rem 1.125rem;
+  margin-bottom: 1rem;
+}
+.new-code { font-size: 0.95rem; color: #166534; }
+.new-code strong { font-family: ui-monospace, monospace; letter-spacing: 0.02em; }
+
+.wa-message {
+  width: 100%;
+  max-width: 34rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.75rem;
+  padding: 0.875rem 1rem;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  color: var(--text);
+  background: #fff;
+  resize: vertical;
+}
+.new-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.875rem; }
+
+/* Panel admin — tata letak & footer */
+.admin-body { min-height: 100vh; display: flex; flex-direction: column; }
+.admin-body #adminRoot { flex: 1 0 auto; }
+
+.admin-footer {
+  flex-shrink: 0;
+  background: var(--ink);
+  padding: 1.125rem 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+.admin-footer .container { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem 1rem; }
+.admin-footer a { color: rgba(255, 255, 255, 0.6); }
+.admin-footer a:hover { color: #fff; text-decoration: underline; }
+.admin-footer .sep { color: rgba(255, 255, 255, 0.2); }
+
 /* Modal pembayaran */
 .modal-overlay {
   position: fixed;

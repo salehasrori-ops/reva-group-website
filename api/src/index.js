@@ -400,6 +400,12 @@ async function handleAdminOrderUpdate(req, env, origin, id, actor) {
   if (!cur) return err("NOT_FOUND", "Pesanan tidak ditemukan.", 404, origin);
   const status = b.status !== undefined ? String(b.status) : cur.status;
   if (!ORDER_STATUSES.includes(status)) return err("VALIDATION", "Status tidak dikenal.", 400, origin);
+  // "Terkonfirmasi" hanya boleh lahir dari pembelian slot yang berhasil —
+  // supaya status tidak pernah berbohong tentang slot yang belum dibeli.
+  if (status === "terkonfirmasi" && cur.status !== "terkonfirmasi" && !cur.rawdah_order_id) {
+    return err("USE_CONFIRM_FLOW",
+      "Status Terkonfirmasi hanya bisa lewat tombol Konfirmasi & Beli Slot (wajib ada bukti transfer).", 400, origin);
+  }
   const note = b.note !== undefined ? String(b.note).slice(0, 500) : cur.note;
   await env.DB.prepare("UPDATE orders SET status = ?, note = ?, updated_at = datetime('now') WHERE id = ?").bind(status, note, id).run();
   if (status !== cur.status) {
@@ -517,6 +523,120 @@ async function handleUserUpdate(req, env, origin, id, actor) {
   }
   const fresh = await env.DB.prepare("SELECT id, name, email, wa, role, perms, created_at FROM users WHERE id = ?").bind(id).first();
   return json({ user: fresh }, 200, origin);
+}
+
+// ---------- bukti transfer ----------
+// Disimpan di tabel terpisah (bukan di orders) agar daftar pesanan tetap ringan.
+// Gambar dikompres di browser; server tetap menolak yang kelewat besar.
+const MAX_PROOF_BYTES = 600 * 1024;
+
+async function handleProofUpload(req, env, origin, id, actor) {
+  const order = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(id).first();
+  if (!order) return err("NOT_FOUND", "Pesanan tidak ditemukan.", 404, origin);
+
+  const b = await req.json().catch(() => ({}));
+  const mime = String(b.mime || "");
+  const data = String(b.data || ""); // base64 tanpa awalan data:
+  if (!/^image\/(jpeg|png|webp)$/.test(mime)) {
+    return err("VALIDATION", "Format harus JPG, PNG, atau WebP.", 400, origin);
+  }
+  const size = Math.floor((data.length * 3) / 4);
+  if (!data || size < 1000) return err("VALIDATION", "Berkas bukti transfer kosong atau rusak.", 400, origin);
+  if (size > MAX_PROOF_BYTES) {
+    return err("VALIDATION", "Ukuran bukti transfer maksimal 600 KB.", 400, origin);
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO proofs (order_id, mime, data, size, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, ?, datetime('now')) " +
+    "ON CONFLICT(order_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, size = excluded.size, uploaded_by = excluded.uploaded_by, uploaded_at = datetime('now')"
+  ).bind(id, mime, data, size, actor.id).run();
+
+  await audit(env, req, actor, "proof_upload", order.code, `${mime}, ${Math.round(size / 1024)} KB`);
+  return json({ ok: true, size }, 200, origin);
+}
+
+async function handleProofGet(env, origin, id) {
+  const row = await env.DB.prepare("SELECT mime, data, size, uploaded_at FROM proofs WHERE order_id = ?").bind(id).first();
+  if (!row) return err("NOT_FOUND", "Bukti transfer belum diunggah.", 404, origin);
+  return json({ mime: row.mime, data: row.data, size: row.size, uploadedAt: row.uploaded_at }, 200, origin);
+}
+
+// ---------- pembelian slot Rawdah ----------
+// PERINGATAN: endpoint ini MEMBELANJAKAN SALDO ASLI dan Rawdah TIDAK punya
+// endpoint pembatalan. Karena itu:
+//   - wajib ada bukti transfer sebelum boleh dibeli
+//   - pesanan yang sudah punya rawdah_order_id tidak akan dibeli lagi
+//   - Idempotency-Key memakai kode pesanan, sehingga percobaan ulang akibat
+//     koneksi putus tidak menjadi pembelian ganda
+// Rujukan jebakan: genderId saat membeli berbentuk STRING "Male"/"Female".
+async function handleConfirmPurchase(req, env, origin, id, actor) {
+  const order = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(id).first();
+  if (!order) return err("NOT_FOUND", "Pesanan tidak ditemukan.", 404, origin);
+
+  if (order.rawdah_order_id) {
+    return err("ALREADY_PURCHASED",
+      `Slot pesanan ini sudah dibeli (order Rawdah ${order.rawdah_order_id}). Tidak dibeli ulang.`, 409, origin);
+  }
+  const proof = await env.DB.prepare("SELECT order_id FROM proofs WHERE order_id = ?").bind(id).first();
+  if (!proof) {
+    return err("NO_PROOF", "Unggah bukti transfer dulu sebelum mengonfirmasi pembelian.", 400, origin);
+  }
+
+  const payload = {
+    dateKey: order.date_key,
+    timeSlot: order.time_slot,
+    genderId: order.gender === "female" ? "Female" : "Male", // WAJIB string di endpoint ini
+    quantity: order.pax,
+  };
+
+  await audit(env, req, actor, "purchase_attempt", order.code, JSON.stringify(payload));
+
+  let res, bodyText;
+  try {
+    res = await fetch("https://api.rawdahnabawi.com/api/appointments/purchase", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + env.ANSARPRO_API_KEY,
+        "Content-Type": "application/json",
+        "Idempotency-Key": order.code, // stabil per pesanan → aman diulang
+      },
+      body: JSON.stringify(payload),
+    });
+    bodyText = await res.text();
+  } catch (e) {
+    await audit(env, req, actor, "purchase_failed", order.code, "jaringan: " + (e && e.message));
+    return err("UPSTREAM", "Tidak dapat menghubungi sistem slot Rawdah. Status pesanan tidak diubah.", 502, origin);
+  }
+
+  let data = null;
+  try { data = JSON.parse(bodyText); } catch { /* biarkan null */ }
+
+  if (!res.ok) {
+    const pesan = (data && data.error && data.error.message) || bodyText.slice(0, 200);
+    await audit(env, req, actor, "purchase_failed", order.code, `HTTP ${res.status}: ${pesan}`);
+    await env.DB.prepare("UPDATE orders SET purchase_note = ? WHERE id = ?")
+      .bind(`Gagal ${new Date().toISOString().slice(0, 16)}: ${pesan}`.slice(0, 500), id).run();
+    return json({ error: { code: "PURCHASE_FAILED", message: "Pembelian slot Rawdah ditolak: " + pesan } }, 502, origin);
+  }
+
+  // orderId datang sebagai angka — disimpan sebagai teks (lihat jebakan tipe data)
+  const rawdahOrderId = data && (data.orderId ?? data.order_id ?? (data.data && data.data.orderId));
+  const purchasedCount = data && (data.purchasedCount ?? (data.data && data.data.purchasedCount));
+  const remainingBalance = data && (data.remainingBalance ?? (data.data && data.data.remainingBalance));
+
+  await env.DB.prepare(
+    "UPDATE orders SET status = 'terkonfirmasi', rawdah_order_id = ?, purchased_at = datetime('now'), purchase_note = ?, updated_at = datetime('now') WHERE id = ?"
+  ).bind(
+    rawdahOrderId != null ? String(rawdahOrderId) : "(tanpa id)",
+    `Dibeli: ${purchasedCount ?? order.pax} slot; sisa saldo ${remainingBalance ?? "-"}`.slice(0, 500),
+    id
+  ).run();
+
+  await audit(env, req, actor, "purchase_success", order.code,
+    `rawdahOrderId=${rawdahOrderId}; count=${purchasedCount}; sisa=${remainingBalance}`);
+
+  const fresh = await env.DB.prepare("SELECT * FROM orders WHERE id = ?").bind(id).first();
+  return json({ order: fresh, rawdah: { orderId: rawdahOrderId, purchasedCount, remainingBalance } }, 200, origin);
 }
 
 // ---------- jadwal ketersediaan Rawdah ----------
@@ -645,6 +765,18 @@ export default {
       const staff = user.role === "owner" || user.role === "admin";
       if (!staff) return err("FORBIDDEN", "Khusus admin.", 403, origin);
 
+      // Admin membuatkan pesanan untuk jamaah (via telepon/WA) — tanpa pembatas
+      // laju pengunjung, dan pemiliknya tetap jamaah (user_id kosong).
+      if (m === "POST" && path === "/admin/orders") {
+        if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
+        const res = await handleCreateOrder(req, env, origin, null);
+        if (res.status === 201) {
+          const copy = res.clone();
+          const body = await copy.json().catch(() => null);
+          if (body && body.order) await audit(env, req, user, "order_created_by_staff", body.order.code, null);
+        }
+        return res;
+      }
       if (m === "GET" && path === "/admin/orders") {
         if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
         return await handleAdminOrders(req, env, origin, url);
@@ -653,6 +785,18 @@ export default {
       if (m === "PATCH" && orderMatch) {
         if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
         return await handleAdminOrderUpdate(req, env, origin, parseInt(orderMatch[1], 10), user);
+      }
+      const proofMatch = path.match(/^\/admin\/orders\/(\d+)\/proof$/);
+      if (proofMatch) {
+        if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
+        const oid = parseInt(proofMatch[1], 10);
+        if (m === "PUT") return await handleProofUpload(req, env, origin, oid, user);
+        if (m === "GET") return await handleProofGet(env, origin, oid);
+      }
+      const confirmMatch = path.match(/^\/admin\/orders\/(\d+)\/confirm$/);
+      if (m === "POST" && confirmMatch) {
+        if (!hasPerm(user, "orders")) return err("FORBIDDEN", "Tidak punya akses pesanan.", 403, origin);
+        return await handleConfirmPurchase(req, env, origin, parseInt(confirmMatch[1], 10), user);
       }
       if (m === "GET" && path === "/admin/stats") {
         if (!hasPerm(user, "traffic")) return err("FORBIDDEN", "Tidak punya akses trafik.", 403, origin);
